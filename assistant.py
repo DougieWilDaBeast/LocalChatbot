@@ -55,9 +55,23 @@ def load_config(path: str = "config.yaml") -> dict:
 # =============================================================================
 
 def play_audio_file(filepath: str, device=None):
-    """Play a .wav file through the speaker."""
+    """Play a .wav file through the speaker, resampling to 48kHz for compatibility."""
     data, samplerate = sf.read(filepath)
-    sd.play(data, samplerate, device=device)
+    target_rate = 48000
+    if samplerate != target_rate:
+        # Resample using linear interpolation
+        duration = len(data) / samplerate
+        target_len = int(duration * target_rate)
+        indices = np.linspace(0, len(data) - 1, target_len)
+        if data.ndim == 1:
+            data = np.interp(indices, np.arange(len(data)), data)
+        else:
+            data = np.column_stack([
+                np.interp(indices, np.arange(len(data)), data[:, ch])
+                for ch in range(data.shape[1])
+            ])
+        samplerate = target_rate
+    sd.play(data.astype(np.float32), samplerate, device=device)
     sd.wait()
 
 
