@@ -245,51 +245,50 @@ class LLMClient:
 # Text-to-Speech (Piper)
 # =============================================================================
 
+try:
+    from piper import PiperVoice
+    PIPER_AVAILABLE = True
+except ImportError:
+    PIPER_AVAILABLE = False
+    print("[!] piper-tts not installed — TTS will be unavailable")
+
+
 class Speaker:
     def __init__(self, cfg: dict):
         tts = cfg["tts"]
-        self.binary = tts["binary"]
-        self.model = tts["model"]
-        self.config = tts["config"]
+        self.model_path = tts["model"]
+        self.config_path = tts["config"]
         self.output_device = cfg["audio"]["output_device"]
 
-        if not Path(self.binary).exists():
-            print(f"[!] Piper binary not found at {self.binary}")
-            print("    Run: ./setup.sh to install")
+        if not PIPER_AVAILABLE:
+            print("[!] piper-tts package not installed. Run: pip install piper-tts")
+            self.voice = None
+            return
 
-        if not Path(self.model).exists():
-            print(f"[!] Piper voice model not found at {self.model}")
+        if not Path(self.model_path).exists():
+            print(f"[!] Piper voice model not found at {self.model_path}")
+            self.voice = None
+            return
 
+        self.voice = PiperVoice.load(self.model_path, config_path=self.config_path)
         print(f"[✓] Piper TTS ready")
 
     def speak(self, text: str):
         """Convert text to speech and play through speaker."""
-        if not text:
+        if not text or not self.voice:
             return
 
-        # Write to temp wav file via Piper
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
 
         try:
-            proc = subprocess.run(
-                [
-                    self.binary,
-                    "--model", self.model,
-                    "--config", self.config,
-                    "--output_file", tmp_path,
-                ],
-                input=text.encode(),
-                capture_output=True,
-                timeout=30,
-            )
-
-            if proc.returncode != 0:
-                print(f"[!] Piper error: {proc.stderr.decode()}")
-                return
+            with wave.open(tmp_path, "wb") as wav_file:
+                self.voice.synthesize(text, wav_file)
 
             play_audio_file(tmp_path, device=self.output_device)
 
+        except Exception as e:
+            print(f"[!] Piper error: {e}")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
