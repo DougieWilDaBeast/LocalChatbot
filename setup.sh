@@ -73,7 +73,10 @@ pip install --upgrade pip -q
 log "Virtual environment created"
 
 info "Installing Python dependencies..."
-pip install -r requirements.txt -q
+# Install all deps except openwakeword (tflite-runtime fails on Python 3.12)
+grep -v '^openwakeword==' requirements.txt | pip install -r /dev/stdin -q
+# Install openwakeword without pulling tflite-runtime (uses onnxruntime instead)
+pip install openwakeword==0.6.0 --no-deps -q
 log "Python dependencies installed"
 
 # -----------------------------------------------------------------------------
@@ -109,8 +112,7 @@ python3 -c "
 import openwakeword
 openwakeword.utils.download_models()
 print('openWakeWord models downloaded')
-"
-log "Wake word models ready"
+" && log "Wake word models ready" || warn "openWakeWord model download failed — wake word may not work until models are available"
 
 # -----------------------------------------------------------------------------
 # 6. Audio device check

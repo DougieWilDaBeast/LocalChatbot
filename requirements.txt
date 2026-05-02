@@ -3,8 +3,12 @@
 # Speech-to-text (faster than original Whisper on CPU)
 faster-whisper==1.0.3
 
-# Wake word detection
+# Wake word detection (installed with --no-deps to skip tflite-runtime on Python 3.12)
+# Uses onnxruntime backend instead — see setup.sh
 openwakeword==0.6.0
+
+# ONNX inference backend (used by openwakeword instead of tflite on Python 3.12+)
+onnxruntime>=1.14.0
 
 # Audio capture and playback
 sounddevice==0.4.6
