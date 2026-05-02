@@ -2,22 +2,22 @@
 
 ## Specs
 
-| | |
-|--|--|
+|     |                                                      |
+| --- | ---------------------------------------------------- |
 | CPU | Intel Core i5-1135G7 @ 2.40GHz (4 cores / 8 threads) |
-| RAM | 32GB DDR4 |
-| GPU | Intel Iris Xe Graphics (96 Execution Units) |
-| TDP | 28W (low idle power — good for always-on use) |
+| RAM | 32GB DDR4                                            |
+| GPU | Intel Iris Xe Graphics (96 Execution Units)          |
+| TDP | 28W (low idle power — good for always-on use)        |
 
 ---
 
 ## Model Performance Estimates
 
-| Model | RAM Used | Tokens/sec (CPU) | Tokens/sec (iGPU) |
-|-------|----------|-------------------|-------------------|
-| Gemma 3 1B Q4 | ~1.5GB | ~15–25 | ~30–45 |
-| Gemma 3 4B Q4 | ~4GB | ~5–10 | ~12–20 |
-| Gemma 4 E4B Q4 | ~6GB | ~4–8 | ~10–18 |
+| Model          | RAM Used | Tokens/sec (CPU) | Tokens/sec (iGPU) |
+| -------------- | -------- | ---------------- | ----------------- |
+| Gemma 3 1B Q4  | ~1.5GB   | ~15–25           | ~30–45            |
+| Gemma 3 4B Q4  | ~4GB     | ~5–10            | ~12–20            |
+| Gemma 4 E4B Q4 | ~6GB     | ~4–8             | ~10–18            |
 
 With 32GB RAM there is no memory pressure at any of these sizes.
 5–10 tokens/sec on the 4B model produces a conversational response in 2–4 seconds — acceptable for voice.
@@ -55,7 +55,7 @@ arecord -f cd -d 5 /tmp/test.wav && aplay /tmp/test.wav
 
 ## Headless Boot
 
-Since this NUC runs headless (no monitor), SSH in for all configuration:
+For headless deployments (no monitor), use SSH for configuration:
 
 ```bash
 # Enable SSH on Ubuntu during install or after:
@@ -67,6 +67,7 @@ ssh user@NUC_IP_ADDRESS
 ```
 
 Find the NUC's IP:
+
 ```bash
 ip addr show | grep inet
 # or from your router's admin page

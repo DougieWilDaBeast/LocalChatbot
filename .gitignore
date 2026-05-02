@@ -1,0 +1,17 @@
+# Local configuration
+config.yaml
+*.local.yaml
+.env
+.env.*
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Runtime outputs
+*.log
+
+# Local models and generated audio artifacts
+models/piper/
+/tmp/*.wav

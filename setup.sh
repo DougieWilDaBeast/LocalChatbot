@@ -135,7 +135,7 @@ for i, d in enumerate(devices):
         print(f'  [{i}] {d[\"name\"]}')
 "
 echo ""
-warn "Check the device indices above and update config/config.yaml accordingly"
+warn "Check the device indices above and update config.yaml accordingly"
 
 # -----------------------------------------------------------------------------
 # 7. Test Ollama is responding
@@ -160,11 +160,12 @@ echo "  Setup Complete"
 echo "============================================="
 echo ""
 echo "Next steps:"
-echo "  1. Edit config:        nano config/config.yaml"
-echo "  2. Test the pipeline:  ./scripts/test_pipeline.sh"
-echo "  3. Run the assistant:  source venv/bin/activate && python3 assistant.py"
-echo "  4. Install as service: sudo ./scripts/install_service.sh"
+echo "  1. Create config:      cp config.example.yaml config.yaml"
+echo "  2. Edit config:        nano config.yaml"
+echo "  3. Test the pipeline:  ./test_pipeline.sh"
+echo "  4. Run the assistant:  source venv/bin/activate && python3 assistant.py"
+echo "  5. Install as service: sudo ./install_service.sh"
 echo ""
 echo "For Intel Iris Xe GPU acceleration:"
-echo "  ./scripts/install_openvino.sh"
+echo "  ./install_openvino.sh"
 echo ""

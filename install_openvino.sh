@@ -72,7 +72,7 @@ for device in devices:
 
 # --- 6. Patch config to use GPU for STT ---
 echo ""
-echo "[→] To enable Intel GPU acceleration for Whisper, update config/config.yaml:"
+echo "[→] To enable Intel GPU acceleration for Whisper, update config.yaml:"
 echo ""
 echo "  stt:"
 echo "    device: 'auto'          # or specify 'openvino'"

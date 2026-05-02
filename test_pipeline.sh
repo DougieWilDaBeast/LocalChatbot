@@ -1,6 +1,6 @@
 #!/bin/bash
 # Test each layer of the pipeline individually
-# Run: ./scripts/test_pipeline.sh
+# Run: ./test_pipeline.sh
 
 set -e
 

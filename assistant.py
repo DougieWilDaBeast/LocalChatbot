@@ -45,7 +45,7 @@ except ImportError:
 # Config
 # =============================================================================
 
-def load_config(path: str = "config/config.yaml") -> dict:
+def load_config(path: str = "config.yaml") -> dict:
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
@@ -212,7 +212,7 @@ class Speaker:
 
         if not Path(self.binary).exists():
             print(f"[!] Piper binary not found at {self.binary}")
-            print("    Run: ./scripts/setup.sh to install")
+            print("    Run: ./setup.sh to install")
 
         if not Path(self.model).exists():
             print(f"[!] Piper voice model not found at {self.model}")
@@ -306,7 +306,7 @@ class WakeWordDetector:
 
 def main():
     parser = argparse.ArgumentParser(description="NUC Offline Voice Assistant")
-    parser.add_argument("--config", default="config/config.yaml")
+    parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--no-wake-word", action="store_true")
     args = parser.parse_args()

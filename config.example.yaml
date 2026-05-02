@@ -1,3 +1,7 @@
+# Copy this file to config.yaml and customize values for your environment.
+# Example:
+#   cp config.example.yaml config.yaml
+
 # =============================================================================
 # NUC Offline Voice Assistant — Configuration
 # =============================================================================
