@@ -296,11 +296,20 @@ class Speaker:
             tmp_path = tmp.name
 
         try:
+            # Collect raw PCM from streaming synthesis
+            audio_bytes = b""
+            for chunk in self.voice.synthesize_stream_raw(text):
+                audio_bytes += chunk
+
+            if not audio_bytes:
+                print("[!] Piper produced no audio")
+                return
+
             with wave.open(tmp_path, "wb") as wav_file:
                 wav_file.setnchannels(1)
                 wav_file.setsampwidth(2)  # 16-bit
                 wav_file.setframerate(self.voice.config.sample_rate)
-                self.voice.synthesize(text, wav_file)
+                wav_file.writeframes(audio_bytes)
 
             play_audio_file(tmp_path, device=self.output_device)
 
