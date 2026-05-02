@@ -283,6 +283,9 @@ class Speaker:
 
         try:
             with wave.open(tmp_path, "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(self.voice.config.sample_rate)
                 self.voice.synthesize(text, wav_file)
 
             play_audio_file(tmp_path, device=self.output_device)
