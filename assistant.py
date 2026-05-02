@@ -152,6 +152,7 @@ class LLMClient:
         self.max_tokens = cfg["model"]["max_tokens"]
         self.system_prompt = cfg["assistant"]["system_prompt"].strip()
         self.memory_size = cfg["behaviour"]["conversation_memory"]
+        self.debug = cfg["behaviour"].get("debug_mode", False)
         self.history = deque(maxlen=self.memory_size * 2)  # user+assistant pairs
         self.base_url = "http://localhost:11434"
 
@@ -193,7 +194,49 @@ class LLMClient:
         )
         r.raise_for_status()
 
-        reply = r.json()["message"]["content"].strip()
+        data = r.json()
+        reply = data.get("message", {}).get("content", "")
+        if isinstance(reply, list):
+            reply = "".join(
+                part.get("text", "") if isinstance(part, dict) else str(part)
+                for part in reply
+            )
+        reply = str(reply).strip()
+
+        if not reply:
+            alt_reply = data.get("response") or data.get("content") or data.get("output_text")
+            if isinstance(alt_reply, str):
+                reply = alt_reply.strip()
+
+        # Some models/versions can return empty content from /api/chat.
+        # Fall back to /api/generate to avoid silent empty assistant replies.
+        if not reply:
+            if self.debug:
+                print("[!] Empty /api/chat response, falling back to /api/generate")
+            gen_payload = {
+                "model": self.model,
+                "prompt": user_text,
+                "system": self.system_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens,
+                },
+            }
+            gen_r = requests.post(
+                f"{self.base_url}/api/generate",
+                json=gen_payload,
+                timeout=60,
+            )
+            gen_r.raise_for_status()
+            gen_data = gen_r.json()
+            reply = str(gen_data.get("response", "")).strip()
+
+        if not reply:
+            if self.debug:
+                print(f"[!] No assistant content from Ollama chat payload: {data}")
+            reply = "I'm here, but I couldn't generate a response just now. Please try again."
+
         self.history.append({"role": "assistant", "content": reply})
         return reply
 
