@@ -1,0 +1,25 @@
+# NUC Offline Voice Assistant - Python Dependencies
+
+# Speech-to-text (faster than original Whisper on CPU)
+faster-whisper==1.0.3
+
+# Wake word detection
+openwakeword==0.6.0
+
+# Audio capture and playback
+sounddevice==0.4.6
+soundfile==0.12.1
+numpy==1.26.4
+pyaudio==0.2.14
+
+# Ollama Python client
+ollama==0.3.3
+
+# HTTP client for Ollama REST API (fallback)
+requests==2.31.0
+
+# Config management
+pyyaml==6.0.1
+
+# Utilities
+scipy==1.13.0

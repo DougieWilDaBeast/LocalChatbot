@@ -1,0 +1,27 @@
+[Unit]
+Description=NUC Offline Voice Assistant
+After=network.target ollama.service sound.target
+Wants=ollama.service
+Documentation=https://github.com/YOUR_USERNAME/nuc-assistant
+
+[Service]
+Type=simple
+User=nuc
+WorkingDirectory=/home/nuc/nuc-assistant
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/nuc/nuc-assistant/venv/bin/python3 /home/nuc/nuc-assistant/assistant.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nuc-assistant
+
+# Audio access
+SupplementaryGroups=audio
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PULSE_RUNTIME_PATH=/run/user/1000/pulse
+
+[Install]
+WantedBy=multi-user.target
