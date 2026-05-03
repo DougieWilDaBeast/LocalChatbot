@@ -32,7 +32,27 @@ import requests
 import sounddevice as sd
 import soundfile as sf
 import yaml
-from faster_whisper import WhisperModel
+
+# STT backends — try OpenVINO first, fall back to faster-whisper
+OV_STT_AVAILABLE = False
+FW_STT_AVAILABLE = False
+
+try:
+    from optimum.intel import OVModelForSpeechSeq2Seq
+    from transformers import AutoProcessor, pipeline as hf_pipeline
+    OV_STT_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    from faster_whisper import WhisperModel
+    FW_STT_AVAILABLE = True
+except ImportError:
+    pass
+
+if not OV_STT_AVAILABLE and not FW_STT_AVAILABLE:
+    print("[✗] No STT backend available. Install optimum-intel or faster-whisper.")
+    sys.exit(1)
 
 # openWakeWord import with graceful fallback
 try:
@@ -183,26 +203,64 @@ def record_until_silence(
 class Transcriber:
     def __init__(self, cfg: dict):
         stt = cfg["stt"]
-        print(f"[→] Loading Whisper {stt['model']} model...")
-        self.model = WhisperModel(
-            stt["model"],
-            device=stt["device"],
-            compute_type=stt["compute_type"],
-        )
         self.language = stt["language"]
-        print(f"[✓] Whisper ready")
+        self.backend = None
+
+        model_name = stt["model"]
+        device = stt.get("device", "cpu")
+        ov_model_dir = f"models/whisper-{model_name}-openvino"
+
+        # Try OpenVINO GPU pipeline first (if device is not explicitly "cpu")
+        if device != "cpu" and OV_STT_AVAILABLE and Path(ov_model_dir).exists():
+            print(f"[→] Loading Whisper {model_name} (OpenVINO GPU)...")
+            ov_device = "GPU" if device in ("auto", "gpu", "GPU") else device.upper()
+            self.ov_model = OVModelForSpeechSeq2Seq.from_pretrained(
+                ov_model_dir, compile=False
+            )
+            self.ov_model.to(ov_device)
+            self.ov_model.compile()
+            self.processor = AutoProcessor.from_pretrained(ov_model_dir)
+            self.pipe = hf_pipeline(
+                "automatic-speech-recognition",
+                model=self.ov_model,
+                tokenizer=self.processor.tokenizer,
+                feature_extractor=self.processor.feature_extractor,
+            )
+            self.backend = "openvino"
+            print(f"[✓] Whisper ready (OpenVINO on {ov_device})")
+        elif FW_STT_AVAILABLE:
+            # Fall back to faster-whisper on CPU
+            print(f"[→] Loading Whisper {model_name} (faster-whisper CPU)...")
+            fw_device = "cpu" if device in ("auto", "gpu", "GPU") else device
+            self.fw_model = WhisperModel(
+                model_name,
+                device=fw_device,
+                compute_type=stt["compute_type"],
+            )
+            self.backend = "faster-whisper"
+            print(f"[✓] Whisper ready (faster-whisper CPU)")
+        else:
+            print("[!] OpenVINO model not found and faster-whisper unavailable.")
+            print(f"    Run: python3 export_whisper_openvino.py {model_name}")
+            sys.exit(1)
 
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
-        # faster-whisper expects float32 normalised audio
         audio_f32 = audio.astype(np.float32) / 32768.0
 
-        segments, _ = self.model.transcribe(
-            audio_f32,
-            language=self.language,
-            beam_size=5,
-            vad_filter=True,
-        )
-        return " ".join(s.text.strip() for s in segments).strip()
+        if self.backend == "openvino":
+            result = self.pipe(
+                {"raw": audio_f32, "sampling_rate": sample_rate},
+                generate_kwargs={"language": self.language},
+            )
+            return result["text"].strip()
+        else:
+            segments, _ = self.fw_model.transcribe(
+                audio_f32,
+                language=self.language,
+                beam_size=5,
+                vad_filter=True,
+            )
+            return " ".join(s.text.strip() for s in segments).strip()
 
 
 # =============================================================================
