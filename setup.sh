@@ -82,28 +82,16 @@ log "Python dependencies installed"
 # -----------------------------------------------------------------------------
 # 4. Piper TTS
 # -----------------------------------------------------------------------------
-info "Installing Piper TTS..."
-mkdir -p models/piper
-
-# Download Piper binary
-PIPER_VERSION="2023.11.14-2"
-PIPER_ARCH="x86_64"
-PIPER_URL="https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_${PIPER_ARCH}.tar.gz"
-
-rm -f /tmp/piper.tar.gz
-rm -rf /tmp/piper
-wget --tries=5 --timeout=30 --waitretry=5 --continue "$PIPER_URL" -O /tmp/piper.tar.gz
-gzip -t /tmp/piper.tar.gz
-tar -xzf /tmp/piper.tar.gz -C /tmp/
-sudo install -m 0755 /tmp/piper/piper /usr/local/bin/piper
-rm -rf /tmp/piper*
-log "Piper binary installed"
+info "Installing Piper TTS (Python package)..."
+pip install piper-tts -q
+log "Piper TTS installed"
 
 info "Downloading Piper voice model (en_GB-alba-medium)..."
+mkdir -p models/piper
 VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx"
 VOICE_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json"
-wget -q "$VOICE_URL" -O models/piper/en_GB-alba-medium.onnx
-wget -q "$VOICE_CONFIG_URL" -O models/piper/en_GB-alba-medium.onnx.json
+wget --tries=5 --timeout=30 --waitretry=5 -q "$VOICE_URL" -O models/piper/en_GB-alba-medium.onnx
+wget --tries=5 --timeout=30 --waitretry=5 -q "$VOICE_CONFIG_URL" -O models/piper/en_GB-alba-medium.onnx.json
 log "Piper voice model downloaded"
 
 # -----------------------------------------------------------------------------

@@ -57,7 +57,6 @@ wake_word:
 # Text-to-Speech (Piper)
 # -----------------------------------------------------------------------------
 tts:
-  binary: "/usr/local/bin/piper"
   model: "models/piper/en_GB-alba-medium.onnx"
   config: "models/piper/en_GB-alba-medium.onnx.json"
   # Alternative voices — download from HuggingFace rhasspy/piper-voices:
