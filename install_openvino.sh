@@ -55,8 +55,8 @@ echo "[✓] faster-whisper configured"
 # --- 6. Test OpenVINO device detection ---
 echo "[→] Detecting OpenVINO devices..."
 python3 -c "
-from openvino.runtime import Core
-core = Core()
+import openvino as ov
+core = ov.Core()
 devices = core.available_devices
 print(f'Available OpenVINO devices: {devices}')
 for device in devices:
