@@ -16,6 +16,7 @@ import argparse
 import io
 import json
 import queue
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ import threading
 import time
 import wave
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -48,6 +50,54 @@ except ImportError:
 def load_config(path: str = "config.yaml") -> dict:
     with open(path, "r") as f:
         return yaml.safe_load(f)
+
+
+# =============================================================================
+# Text Sanitization
+# =============================================================================
+
+def sanitize_for_speech(text: str) -> str:
+    """Strip markdown formatting so TTS doesn't read out *, #, etc."""
+    # Remove horizontal rules
+    text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
+    # Remove headings markers
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
+    # Remove bold/italic markers
+    text = re.sub(r"\*{1,3}(.*?)\*{1,3}", r"\1", text)
+    text = re.sub(r"_{1,3}(.*?)_{1,3}", r"\1", text)
+    # Remove inline code backticks
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    # Remove code fences
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    # Remove bullet points
+    text = re.sub(r"^\s*[-•*]\s+", "", text, flags=re.MULTILINE)
+    # Remove numbered list prefixes
+    text = re.sub(r"^\s*\d+[.):]\s+", "", text, flags=re.MULTILINE)
+    # Collapse multiple newlines/whitespace into single space
+    text = re.sub(r"\n+", " ", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
+
+
+# =============================================================================
+# Conversation Logger
+# =============================================================================
+
+class ConversationLogger:
+    def __init__(self, log_dir: str = "conversations"):
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(exist_ok=True)
+        self.session_file = self.log_dir / f"session_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.md"
+        self._write_header()
+
+    def _write_header(self):
+        with open(self.session_file, "w") as f:
+            f.write(f"# Conversation — {datetime.now().strftime('%A %d %B %Y, %H:%M')}\n\n")
+
+    def log(self, speaker: str, text: str):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        with open(self.session_file, "a") as f:
+            f.write(f"**[{timestamp}] {speaker}:**\n{text}\n\n---\n\n")
 
 
 # =============================================================================
@@ -389,6 +439,7 @@ def main():
     llm = LLMClient(cfg)
     speaker = Speaker(cfg)
     wake_detector = WakeWordDetector(cfg)
+    logger = ConversationLogger()
 
     # Signal ready
     if cfg["behaviour"]["startup_sound"]:
@@ -431,11 +482,18 @@ def main():
             # Get LLM response
             response = llm.chat(text)
 
+            # Log conversation (raw response with formatting preserved)
+            logger.log("You", text)
+            logger.log(cfg["assistant"]["name"], response)
+
+            # Sanitize for speech output
+            spoken = sanitize_for_speech(response)
+
             if debug:
-                print(f"[Assistant]: {response}")
+                print(f"[Assistant]: {spoken}")
 
             # Speak response
-            speaker.speak(response)
+            speaker.speak(spoken)
 
         except KeyboardInterrupt:
             print("\n\n[Shutting down]")
