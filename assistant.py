@@ -297,7 +297,7 @@ class Speaker:
 
         try:
             with wave.open(tmp_path, "wb") as wav_file:
-                self.voice.synthesize(text, wav_file)
+                self.voice.synthesize_wav(text, wav_file)
 
             play_audio_file(tmp_path, device=self.output_device)
 

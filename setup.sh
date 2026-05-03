@@ -88,11 +88,9 @@ log "Piper TTS installed"
 
 info "Downloading Piper voice model (en_GB-alba-medium)..."
 mkdir -p models/piper
-VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx"
-VOICE_CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx.json"
-wget --tries=5 --timeout=30 --waitretry=5 -q "$VOICE_URL" -O models/piper/en_GB-alba-medium.onnx
-wget --tries=5 --timeout=30 --waitretry=5 -q "$VOICE_CONFIG_URL" -O models/piper/en_GB-alba-medium.onnx.json
-log "Piper voice model downloaded"
+python3 -m piper.download_voices --download-dir models/piper en_GB-alba-medium \
+    && log "Piper voice model downloaded" \
+    || warn "Voice model download failed (no internet?). Copy .onnx + .onnx.json manually to models/piper/"
 
 # -----------------------------------------------------------------------------
 # 5. openWakeWord model
