@@ -28,5 +28,8 @@ requests==2.31.0
 # Config management
 pyyaml==6.0.1
 
+# Text-to-Speech (Piper via Python package — no binary needed)
+piper-tts>=1.4.0
+
 # Utilities
 scipy==1.13.0
