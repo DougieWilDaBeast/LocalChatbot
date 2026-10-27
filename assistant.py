@@ -239,7 +239,6 @@ class LLMClient:
                     "temperature": self.temperature,
                     "num_predict": self.max_tokens,
                     "num_ctx": self.context_window,
-                "num_ctx": self.context_window,
                 },
             }
             gen_r = requests.post(
