@@ -4,6 +4,8 @@ A fully offline voice assistant running on an Intel NUC with local LLM inference
 
 Designed as a local-first voice assistant template you can personalize after cloning.
 
+A personal project by [Will Douglas](https://github.com/DougieWilDaBeast), built to see how far a fully local voice assistant can go on an ordinary mini PC.
+
 ---
 
 ## Hardware
@@ -34,31 +36,24 @@ Designed as a local-first voice assistant template you can personalize after clo
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    Mic([Microphone]) --> Wake[openWakeWord<br/>listens for the wake word]
+    Wake -- silence --> Wake
+    Wake -- wake word heard --> STT[faster-whisper<br/>speech to text]
+    STT -- transcribed text --> LLM[Ollama + Gemma<br/>local LLM]
+    LLM -- reply, streamed one sentence at a time --> TTS[Piper<br/>text to speech]
+    TTS --> Speaker([Speaker])
 ```
-[Microphone]
-     │
-     ▼
-[openWakeWord] ──── silence ────► (keep listening)
-     │ wake word detected
-     ▼
-[faster-whisper]
-     │ transcribed text
-     ▼
-[Ollama / Gemma]
-     │ reply, streamed one sentence at a time
-     ▼
-[Piper TTS]
-     │ audio
-     ▼
-[Speaker]
-```
+
+Every step runs on the NUC itself. Replies are streamed to Piper a sentence at a time, so the assistant starts speaking before the LLM has finished thinking.
 
 ---
 
 ## Project Structure
 
 ```
-local-chatbot/
+LocalChatbot/
 ├── README.md
 ├── config.example.yaml       # Copy to config.yaml and personalize
 ├── config.yaml               # Local runtime config (do not commit private values)
@@ -87,8 +82,8 @@ local-chatbot/
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/DougieWilDaBeast/LocalChatbot.git
+cd LocalChatbot
 
 # 2. Run the setup script
 ./setup.sh
