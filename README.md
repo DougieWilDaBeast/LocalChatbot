@@ -137,7 +137,7 @@ The system prompt is configured in `config.yaml` (created from `config.example.y
 - [x] Wake word detection
 - [x] systemd auto-start
 - [x] Conversation memory (rolling context window)
-- [ ] Stream LLM replies to TTS sentence by sentence
+- [x] Stream LLM replies to TTS sentence by sentence
 - [ ] Intel Iris Xe LLM offload via Ollama's Vulkan backend
 - [ ] OpenVINO GenAI Whisper inference on the iGPU
 - [ ] Physical button trigger (GPIO or USB)
