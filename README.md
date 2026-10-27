@@ -63,9 +63,11 @@ local-chatbot/
 ├── config.example.yaml       # Copy to config.yaml and personalize
 ├── config.yaml               # Local runtime config (do not commit private values)
 ├── requirements.txt
+├── requirements-dev.txt      # pytest and ruff
 ├── assistant.py              # Main pipeline orchestrator
 ├── setup.sh                  # Full environment setup
 ├── test_pipeline.sh          # Test each layer individually
+├── tests/                    # Unit tests (no mic, speaker or models needed)
 ├── install_service.sh        # Install systemd service
 ├── nuc-assistant.service     # systemd template (install script fills local values)
 └── HARDWARE.md               # Hardware notes and tuning guidance
@@ -128,6 +130,21 @@ Everything currently runs on the CPU. The i5-1135G7's Iris Xe iGPU can be used f
 ## Customisation
 
 The system prompt is configured in `config.yaml` (created from `config.example.yaml`). Edit it to personalize the assistant for whoever is using it: their name, location, interests, and preferred response style.
+
+---
+
+## Development
+
+Unit tests fake the microphone, speaker, Ollama and the speech models, so they run on any machine:
+
+```bash
+source venv/bin/activate
+pip install -r requirements-dev.txt
+ruff check .
+pytest
+```
+
+GitHub Actions runs the same checks on every push and pull request.
 
 ---
 

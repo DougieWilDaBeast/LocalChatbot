@@ -13,11 +13,9 @@ Run:
 """
 
 import argparse
-import io
 import json
 import queue
 import re
-import subprocess
 import sys
 import tempfile
 import threading
@@ -141,7 +139,7 @@ class Transcriber:
             compute_type=stt["compute_type"],
         )
         self.language = stt["language"]
-        print(f"[✓] Whisper ready")
+        print("[✓] Whisper ready")
 
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
         # faster-whisper expects float32 normalised audio
@@ -199,7 +197,7 @@ class LLMClient:
         print(f"[→] Connecting to Ollama ({self.model})...")
         self._check_connection()
         self._warm_up()
-        print(f"[✓] Ollama ready")
+        print("[✓] Ollama ready")
 
     def _check_connection(self):
         try:
@@ -349,7 +347,7 @@ class Speaker:
             return
 
         self.voice = PiperVoice.load(self.model_path, config_path=self.config_path)
-        print(f"[✓] Piper TTS ready")
+        print("[✓] Piper TTS ready")
 
     def speak(self, text: str):
         """Convert text to speech and play through speaker."""

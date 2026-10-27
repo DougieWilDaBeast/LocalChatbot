@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system libraries
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libportaudio2
+
+      - name: Install Python dependencies
+        # Same steps as setup.sh: openwakeword goes in with --no-deps
+        run: |
+          grep -v '^openwakeword==' requirements.txt | pip install -r /dev/stdin
+          pip install openwakeword==0.6.0 --no-deps
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest -v
+
+      - name: Check shell scripts parse
+        run: for f in *.sh; do bash -n "$f"; done
