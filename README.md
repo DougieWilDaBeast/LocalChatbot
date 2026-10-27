@@ -110,8 +110,8 @@ sudo ./install_service.sh
 
 After cloning, update these values in `config.yaml`:
 
-- `assistant.name`
-- `assistant.system_prompt` placeholders: `[YOUR_NAME]`, `[YOUR_LOCATION]`, and your short profile text
+- `assistant.name`, and the same name in the first line of `assistant.system_prompt`
+- `assistant.system_prompt`: optionally add a line about who the assistant is talking to (an example is in the comments above it)
 - `audio.input_device` and `audio.output_device` (if defaults are not correct)
 - `model.name` (optional if you want a different local Ollama model)
 

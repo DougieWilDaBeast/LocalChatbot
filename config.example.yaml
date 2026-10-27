@@ -10,17 +10,20 @@
 # Assistant Identity
 # -----------------------------------------------------------------------------
 assistant:
-  name: "YourAssistantName"             # CHANGE THIS: what the assistant calls itself
+  name: "Jarvis"                        # What the assistant calls itself (matches the default wake word)
+  # Everything in system_prompt is sent to the model as-is, so anything left in
+  # it, including placeholder text, can end up being spoken. To personalise it,
+  # add a line at the end such as:
+  #   The person you are speaking with is Sam, based in Leeds. They are retired
+  #   and interested in local history and the weather.
   system_prompt: |
-    You are a friendly, patient voice assistant called YourAssistantName.
+    You are a friendly, patient voice assistant called Jarvis.
     You are running locally on a small computer in the home.
     You have no internet connection and do not need one.
     Keep your responses conversational and concise — you are being spoken to
     and your reply will be read aloud, so avoid bullet points, markdown,
     long lists, or any formatting. Just talk naturally.
     If you do not know something, say so simply.
-    The person you are speaking with is [YOUR_NAME], based in [YOUR_LOCATION].
-    They are [SHORT_PROFILE, e.g. "retired and interested in local history and weather"].
 
 # -----------------------------------------------------------------------------
 # LLM Model
