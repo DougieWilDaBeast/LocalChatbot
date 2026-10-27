@@ -3,6 +3,7 @@ are all faked, so these run anywhere without a mic, speaker or GPU."""
 
 import json
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -502,19 +503,20 @@ def test_record_turn_continues_from_barge_in_audio(listener):
     assert np.array_equal(turn[:listen.FRAME * 10], np.concatenate(start))
 
 
-def test_barge_in_monitor_hears_user_and_keeps_their_audio(listener):
+def test_speech_monitor_hears_user_and_keeps_their_audio(listener):
     lis, use_signal = listener
     use_signal(frames_of((1.0, False), (2.0, True)))
-    with lis.barge_in_monitor() as monitor:
+    with lis.monitor() as monitor:
         assert monitor.heard.wait(2)
-    speech_frames = sum(np.abs(f).mean() > 1000 for f in monitor.frames)
-    assert speech_frames == lis.barge_in_frames  # stopped as soon as it was sure
+        time.sleep(0.2)  # it keeps recording after hearing them, until stopped
+    heard = np.concatenate(monitor.frames)
+    assert np.count_nonzero(heard) == 2 * listen.SAMPLE_RATE  # every word kept
 
 
-def test_barge_in_monitor_ignores_short_noises(listener):
+def test_speech_monitor_ignores_short_noises(listener):
     lis, use_signal = listener
     use_signal(np.tile(frames_of((0.1, True), (0.5, False)), 10))
-    with lis.barge_in_monitor() as monitor:
+    with lis.monitor() as monitor:
         assert not monitor.heard.wait(0.5)
 
 
@@ -534,3 +536,86 @@ def test_smart_turn_pads_audio_into_an_8_second_window(monkeypatch):
     assert model.probability(frames_of((1.0, True))) == pytest.approx(0.75)
     assert seen["features"].shape == (1, 80, 800)
     assert seen["features"].dtype == np.float32
+
+
+
+def test_turn_continues_when_user_keeps_talking_during_transcription(monkeypatch):
+    from nuc_assistant import main as app
+
+    first, rest = np.ones(10, np.int16), np.full(5, 2, np.int16)
+    transcribed, asked = [], []
+
+    class FakeMonitor:
+        def __init__(self):
+            self.heard = threading.Event()
+            self.frames = [rest]
+
+        def start(self):
+            return self
+
+        def stop(self):
+            pass
+
+    class FakeListener:
+        barge_in = True
+        monitors = []
+
+        def __init__(self, cfg):
+            pass
+
+        def monitor(self):
+            self.monitors.append(FakeMonitor())
+            return self.monitors[-1]
+
+        def record_turn(self, wait_seconds=None, initial=None):
+            if wait_seconds is not None:
+                raise KeyboardInterrupt  # end the run at the follow-up window
+            return np.concatenate(initial) if initial else first
+
+    class FakeTranscriber:
+        def __init__(self, cfg):
+            pass
+
+        def transcribe(self, audio, rate):
+            transcribed.append(audio)
+            if len(transcribed) == 1:
+                # The user carries on talking while the first part is transcribed
+                FakeListener.monitors[-1].heard.set()
+                return "Sorry, stop. Actually,"
+            return "Sorry, stop. Actually, what is two plus two?"
+
+    class FakeLLM:
+        def __init__(self, cfg):
+            pass
+
+        def chat_stream(self, text, stop=None):
+            asked.append(text)
+            return iter(["Four."])
+
+    class FakeSpeaker:
+        def __init__(self, cfg):
+            pass
+
+        def speak_stream(self, sentences, debug=False, stop=None):
+            list(sentences)
+
+    class FakeWake:
+        def __init__(self, cfg):
+            pass
+
+        def wait_for_wake_word(self):
+            pass
+
+    monkeypatch.setattr(app, "Listener", FakeListener)
+    monkeypatch.setattr(app, "Transcriber", FakeTranscriber)
+    monkeypatch.setattr(app, "LLMClient", FakeLLM)
+    monkeypatch.setattr(app, "Speaker", FakeSpeaker)
+    monkeypatch.setattr(app, "WakeWordDetector", FakeWake)
+    monkeypatch.setattr(app, "play_beep", lambda *a, **kw: None)
+    monkeypatch.setattr(app.sys, "argv",
+                        ["assistant.py", "--config", str(REPO / "config.example.yaml")])
+    app.main()
+
+    # One turn, nothing lost: the LLM gets the whole question once
+    assert np.array_equal(transcribed[1], np.concatenate([first, rest]))
+    assert asked == ["Sorry, stop. Actually, what is two plus two?"]

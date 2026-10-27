@@ -137,7 +137,7 @@ Everything currently runs on the CPU. The i5-1135G7's Iris Xe iGPU can be used f
 
 ## Conversation: barge-in, end of turn and follow-ups
 
-The assistant listens while it talks. If you speak over it for about 300 ms it stops mid-sentence, cancels the rest of the reply, and treats what you said as your next question. It decides you've finished speaking with the Smart Turn model, so a short pause mid-sentence doesn't cut you off, and after each reply it keeps listening for 5 seconds so a follow-up doesn't need the wake word. All of this is under `conversation:` in `config.yaml`.
+The assistant listens while it talks. If you speak over it for about 300 ms it stops mid-sentence, cancels the rest of the reply, and treats what you said as your next question. It decides you've finished speaking with the Smart Turn model, so a short pause mid-sentence doesn't cut you off. It also keeps listening while it transcribes, so if it decided too early and you carry on talking, the rest joins the same question. After each reply it keeps listening for 5 seconds so a follow-up doesn't need the wake word. All of this is under `conversation:` in `config.yaml`.
 
 Barge-in needs the microphone not to hear the assistant's own voice. With a headset or a speakerphone that cancels echo, nothing else is needed. With a separate speaker and mic, turn on echo cancellation in PipeWire (Ubuntu 24.04's sound server), then make the new echo-cancelled microphone the default input in Settings → Sound:
 

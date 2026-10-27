@@ -1,5 +1,6 @@
 """Listening for the user's turn: voice activity detection (Silero, bundled with
-openWakeWord), end-of-turn detection (Smart Turn) and barge-in while speaking."""
+openWakeWord), end-of-turn detection (Smart Turn), and listening on while the
+assistant transcribes and talks, for barge-in."""
 
 import threading
 from collections import deque
@@ -76,8 +77,8 @@ class Listener:
         self.barge_in_frames = max(1, conv["barge_in_ms"] // FRAME_MS)
 
         self.vad = load_vad()
-        self.barge_vad = load_vad() if conv["barge_in"] else None
-        self.barge_in = self.barge_vad is not None
+        self.monitor_vad = load_vad() if self.vad is not None else None
+        self.barge_in = conv["barge_in"] and self.vad is not None
         if self.vad is None:
             print("[!] No voice activity detection: falling back to the silence timer, "
                   "with no barge-in or follow-up listening")
@@ -160,14 +161,17 @@ class Listener:
 
         return np.concatenate(frames)
 
-    def barge_in_monitor(self):
-        return BargeInMonitor(self) if self.barge_in else None
+    def monitor(self):
+        """A SpeechMonitor for the time after a turn ends, or None without VAD."""
+        return SpeechMonitor(self) if self.vad is not None else None
 
 
-class BargeInMonitor:
-    """Listens while the assistant talks. Once the user has spoken for
-    barge_in_ms, sets `heard` (which stops playback and the LLM) and keeps
-    the audio so far in `frames`, so the start of what they said isn't lost."""
+class SpeechMonitor:
+    """Keeps listening after a turn has ended: while Whisper transcribes (the
+    user may not have finished after all) and, for barge-in, while the
+    assistant talks. Once the user has spoken for barge_in_ms, sets `heard`
+    (which stops playback and the LLM), then keeps recording into `frames`
+    until stopped, so nothing they say is lost."""
 
     def __init__(self, listener: Listener):
         self.listener = listener
@@ -176,18 +180,25 @@ class BargeInMonitor:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
-    def __enter__(self):
+    def start(self):
         self._thread.start()
         return self
 
-    def __exit__(self, *exc):
+    def stop(self):
         self._stop.set()
-        self._thread.join(timeout=2)
+        if self._thread.is_alive():
+            self._thread.join(timeout=2)
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *exc):
+        self.stop()
         return False
 
     def _run(self):
         listener = self.listener
-        vad = listener.barge_vad
+        vad = listener.monitor_vad
         vad.reset_states()
         recent = deque(maxlen=PRE_ROLL_FRAMES + listener.barge_in_frames)
         run = 0
@@ -195,9 +206,11 @@ class BargeInMonitor:
                             device=listener.input_device, blocksize=FRAME) as stream:
             while not self._stop.is_set():
                 frame = stream.read(FRAME)[0].flatten()
+                if self.heard.is_set():
+                    self.frames.append(frame)
+                    continue
                 recent.append(frame)
                 run = run + 1 if listener.is_speech(vad, frame) else 0
                 if run >= listener.barge_in_frames:
                     self.frames = list(recent)
                     self.heard.set()
-                    return

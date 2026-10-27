@@ -72,32 +72,49 @@ def main():
                     print("[Recording...]")
                 audio = listener.record_turn()
 
-            # Transcribe
-            text = transcriber.transcribe(audio, cfg["audio"]["sample_rate"])
-            audio = None
+            # Keep listening while Whisper transcribes: if the user carries on
+            # talking, the turn ended too early and continues. With barge-in,
+            # the same monitor then listens while the reply plays.
+            monitor = listener.monitor()
+            if monitor is not None:
+                monitor.start()
+            try:
+                text = transcriber.transcribe(audio, cfg["audio"]["sample_rate"])
 
-            if not text:
+                if monitor is not None and monitor.heard.is_set():
+                    if debug:
+                        print("[Still talking, listening...]")
+                    monitor.stop()
+                    audio = listener.record_turn(initial=[audio, *monitor.frames])
+                    continue
+                audio = None
+
+                if not text:
+                    if debug:
+                        print("[No speech detected]")
+                    continue
+
                 if debug:
-                    print("[No speech detected]")
-                continue
+                    print(f"[You]: {text}")
 
-            if debug:
-                print(f"[You]: {text}")
-
-            # Get the LLM response and speak it sentence by sentence. With
-            # barge-in, talking over it stops the reply and starts a new turn.
-            monitor = listener.barge_in_monitor()
-            if monitor is None:
-                speaker.speak_stream(llm.chat_stream(text), debug=debug)
-            else:
-                with monitor:
+                # Get the LLM response and speak it sentence by sentence. With
+                # barge-in, talking over it stops the reply and starts a new turn.
+                if not listener.barge_in:
+                    if monitor is not None:
+                        monitor.stop()
+                    speaker.speak_stream(llm.chat_stream(text), debug=debug)
+                else:
                     speaker.speak_stream(llm.chat_stream(text, stop=monitor.heard),
                                          debug=debug, stop=monitor.heard)
-                if monitor.heard.is_set():
-                    if debug:
-                        print("[Interrupted, listening...]")
-                    audio = listener.record_turn(initial=monitor.frames)
-                    continue
+                    if monitor.heard.is_set():
+                        if debug:
+                            print("[Interrupted, listening...]")
+                        monitor.stop()
+                        audio = listener.record_turn(initial=monitor.frames)
+                        continue
+            finally:
+                if monitor is not None:
+                    monitor.stop()
 
             # Follow-up window: keep listening briefly without the wake word
             if follow_up:
