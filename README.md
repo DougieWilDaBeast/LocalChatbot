@@ -146,6 +146,24 @@ The system prompt is configured in `config.yaml` (created from `config.example.y
 
 ---
 
+## Future Work
+
+### Full-duplex voice models (needs stronger hardware)
+
+Full-duplex speech-to-speech models listen and talk at the same time, so they can be interrupted, make "mm-hm" sounds while you speak, and reply in a few hundred milliseconds. As of October 2026 the open options are Kyutai's [Moshi](https://github.com/kyutai-labs/moshi), NVIDIA's [PersonaPlex-7B](https://huggingface.co/nvidia/personaplex-7b-v1) (built on Moshi), [MiniCPM-o 4.5](https://github.com/tc-mb/llama.cpp-omni) through the llama.cpp-omni fork, and NVIDIA's NemotronLabs VoiceChat ([paper](https://arxiv.org/abs/2609.21967)).
+
+None of them is practical on the NUC. They are 7B to 9B models that target CUDA or Apple Metal, and none supports Intel GPUs. Moshi runs its 7B model about 12.5 times a second without pause, while the i5-1135G7 manages a few tokens a second on the smaller Gemma 4 E4B, so it would run at least 4x slower than real time.
+
+For now the plan is to make the existing pipeline feel more conversational instead: streaming replies, barge-in (talking over the assistant to stop it), smarter end-of-turn detection, and a short follow-up window without the wake word. Revisit full-duplex if the assistant moves to a machine with an NVIDIA GPU with 16 GB or more of VRAM, or if a small full-duplex model with a CPU or Vulkan runtime appears.
+
+Other things worth testing later:
+
+- [LFM2.5-Audio-1.5B](https://huggingface.co/LiquidAI/LFM2.5-Audio-1.5B): a small turn-based speech-to-speech model with CPU GGUF builds, as an experimental mode.
+- [Kyutai Pocket TTS](https://kyutai.org/tts/): a 100M-parameter streaming TTS that runs in real time on a CPU, as a more natural alternative to Piper.
+- Gemma 4's own audio input, which could replace faster-whisper and save loading one model.
+
+---
+
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE). This matches [Piper TTS](https://github.com/OHF-Voice/piper1-gpl), which is also GPL-3.0.
