@@ -37,6 +37,16 @@ DEFAULTS = {
         "silence_threshold": 500,
         "speech_threshold": 500,
     },
+    "conversation": {
+        "barge_in": True,
+        "barge_in_ms": 300,
+        "vad_threshold": 0.5,
+        "smart_turn": True,
+        "smart_turn_model": "models/smart-turn/smart-turn-v3.2-cpu.onnx",
+        "pause_ms": 500,
+        "max_pause_ms": 2000,
+        "follow_up_seconds": 5,
+    },
     "behaviour": {
         "startup_sound": True,
         "listening_indicator": True,
@@ -77,6 +87,10 @@ def validate(cfg: dict):
         raise ConfigError("wake_word.threshold must be between 0 and 1")
     if cfg["model"]["max_tokens"] <= 0:
         raise ConfigError("model.max_tokens must be positive")
+    if not 0 <= cfg["conversation"]["vad_threshold"] <= 1:
+        raise ConfigError("conversation.vad_threshold must be between 0 and 1")
+    if cfg["conversation"]["follow_up_seconds"] < 0:
+        raise ConfigError("conversation.follow_up_seconds can't be negative")
     if cfg["behaviour"]["conversation_memory"] < 0:
         raise ConfigError("behaviour.conversation_memory can't be negative")
 

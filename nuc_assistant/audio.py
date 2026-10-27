@@ -5,8 +5,9 @@ import sounddevice as sd
 import soundfile as sf
 
 
-def play_audio_file(filepath: str, device=None):
-    """Play a .wav file through the speaker, resampling to 48kHz for compatibility."""
+def play_audio_file(filepath: str, device=None, stop=None):
+    """Play a .wav file through the speaker, resampling to 48kHz for compatibility.
+    If `stop` (a threading.Event) is set during playback, cut it off."""
     data, samplerate = sf.read(filepath)
     target_rate = 48000
     if samplerate != target_rate:
@@ -23,6 +24,8 @@ def play_audio_file(filepath: str, device=None):
             ])
         samplerate = target_rate
     sd.play(data.astype(np.float32), samplerate, device=device)
+    if stop is not None and stop.wait(len(data) / samplerate):
+        sd.stop()
     sd.wait()
 
 

@@ -2,6 +2,7 @@
 are all faked, so these run anywhere without a mic, speaker or GPU."""
 
 import json
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +10,7 @@ import pytest
 import requests
 import yaml
 
-from nuc_assistant import audio, config, llm, stt, tts, wakeword
+from nuc_assistant import audio, config, listen, llm, stt, tts, wakeword
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -200,7 +201,7 @@ def speaker(cfg, monkeypatch):
     cfg["tts"]["model"] = "does/not/exist.onnx"  # skip loading a real voice
     spk = tts.Speaker(cfg)
     said = []
-    monkeypatch.setattr(spk, "speak", said.append)
+    monkeypatch.setattr(spk, "speak", lambda text, stop=None: said.append(text))
     return spk, said
 
 
@@ -369,3 +370,167 @@ def test_config_rejects_bad_settings(tmp_path, change, message):
     path.write_text(yaml.safe_dump(raw))
     with pytest.raises(config.ConfigError, match=message):
         config.load_config(path)
+
+
+# =============================================================================
+# Barge-in, end-of-turn detection and follow-ups
+# =============================================================================
+
+def test_chat_stream_stops_when_interrupted_and_keeps_what_was_said(cfg, ollama):
+    client = llm.LLMClient(cfg)
+    ollama.chat_pieces = ["First part. ", "Second part. ", "Third part."]
+    stop = threading.Event()
+    reply = []
+    for sentence in client.chat_stream("Tell me", stop=stop):
+        reply.append(sentence)
+        stop.set()  # the user talks over the first sentence
+    assert reply == ["First part."]
+    assert list(client.history)[-2:] == [
+        {"role": "user", "content": "Tell me"},
+        {"role": "assistant", "content": "First part."},
+    ]
+
+
+def test_chat_stream_forgets_question_interrupted_before_any_answer(cfg, ollama):
+    client = llm.LLMClient(cfg)
+    ollama.chat_pieces = ["Never heard."]
+    stop = threading.Event()
+    stop.set()
+    assert list(client.chat_stream("Tell me", stop=stop)) == []
+    assert list(client.history) == []
+    assert not ollama.posts[-1][0].endswith("/api/generate")  # no fallback request
+
+
+def test_speak_stream_stops_speaking_when_interrupted(speaker):
+    spk, said = speaker
+    stop = threading.Event()
+
+    def speak(text, stop=None):
+        said.append(text)
+        stop.set()
+
+    spk.speak = speak
+    spk.speak_stream(iter(["One.", "Two.", "Three."]), stop=stop)
+    assert said == ["One."]
+
+
+def test_play_audio_file_cuts_off_when_stopped(tmp_path, monkeypatch):
+    import soundfile as sf
+    path = tmp_path / "tone.wav"
+    sf.write(path, np.zeros(48000 * 10, np.float32), 48000)  # 10s
+    calls = []
+    monkeypatch.setattr(audio.sd, "play", lambda *a, **kw: calls.append("play"))
+    monkeypatch.setattr(audio.sd, "stop", lambda: calls.append("stop"))
+    monkeypatch.setattr(audio.sd, "wait", lambda: calls.append("wait"))
+    stop = threading.Event()
+    stop.set()
+    audio.play_audio_file(str(path), stop=stop)
+    assert calls == ["play", "stop", "wait"]
+
+
+class FakeVAD:
+    """Calls any loud frame speech."""
+
+    def reset_states(self):
+        pass
+
+    def predict(self, frame, frame_size=480):
+        return 1.0 if np.abs(frame).mean() > 1000 else 0.0
+
+
+def frames_of(*parts):
+    """Build a signal from (seconds, loud?) parts."""
+    rate = listen.SAMPLE_RATE
+    return np.concatenate([
+        np.full(int(sec * rate), 5000 if loud else 0, np.int16) for sec, loud in parts])
+
+
+@pytest.fixture
+def listener(cfg, monkeypatch):
+    cfg["conversation"]["smart_turn"] = False
+    monkeypatch.setattr(listen, "load_vad", FakeVAD)
+
+    def use_signal(signal):
+        monkeypatch.setattr(listen.sd, "InputStream",
+                            lambda **kw: FakeInputStream(signal, **kw))
+    return listen.Listener(cfg), use_signal
+
+
+def test_record_turn_ends_after_silence_without_smart_turn(listener):
+    lis, use_signal = listener
+    use_signal(frames_of((0.5, False), (1.0, True), (5, False)))
+    turn = lis.record_turn()
+    # 300 ms pre-roll + 1s speech + silence_threshold (500 ms)
+    assert len(turn) / listen.SAMPLE_RATE == pytest.approx(1.8, abs=0.06)
+
+
+def test_record_turn_asks_smart_turn_and_waits_out_a_mid_sentence_pause(listener):
+    lis, use_signal = listener
+    asked = []
+
+    class NotFinished:
+        def probability(self, audio):
+            asked.append(len(audio))
+            return 0.1
+
+    lis.smart_turn = NotFinished()
+    use_signal(frames_of((1.0, True), (5, False)))
+    turn = lis.record_turn()
+    assert len(asked) == 1  # asked once at pause_ms (500 ms), then waited for max_pause_ms
+    assert len(turn) / listen.SAMPLE_RATE == pytest.approx(1.0 + 2.0, abs=0.06)
+
+
+def test_record_turn_ends_early_when_smart_turn_says_finished(listener):
+    lis, use_signal = listener
+    lis.smart_turn = type("Done", (), {"probability": lambda self, audio: 0.9})()
+    use_signal(frames_of((1.0, True), (5, False)))
+    turn = lis.record_turn()
+    assert len(turn) / listen.SAMPLE_RATE == pytest.approx(1.0 + 0.5, abs=0.06)
+
+
+def test_record_turn_gives_up_when_no_follow_up(listener):
+    lis, use_signal = listener
+    use_signal(frames_of((10, False)))
+    assert lis.record_turn(wait_seconds=2) is None
+
+
+def test_record_turn_continues_from_barge_in_audio(listener):
+    lis, use_signal = listener
+    use_signal(frames_of((0.5, True), (5, False)))
+    start = [np.full(listen.FRAME, 5000, np.int16)] * 10
+    turn = lis.record_turn(initial=start)
+    assert np.array_equal(turn[:listen.FRAME * 10], np.concatenate(start))
+
+
+def test_barge_in_monitor_hears_user_and_keeps_their_audio(listener):
+    lis, use_signal = listener
+    use_signal(frames_of((1.0, False), (2.0, True)))
+    with lis.barge_in_monitor() as monitor:
+        assert monitor.heard.wait(2)
+    speech_frames = sum(np.abs(f).mean() > 1000 for f in monitor.frames)
+    assert speech_frames == lis.barge_in_frames  # stopped as soon as it was sure
+
+
+def test_barge_in_monitor_ignores_short_noises(listener):
+    lis, use_signal = listener
+    use_signal(np.tile(frames_of((0.1, True), (0.5, False)), 10))
+    with lis.barge_in_monitor() as monitor:
+        assert not monitor.heard.wait(0.5)
+
+
+def test_smart_turn_pads_audio_into_an_8_second_window(monkeypatch):
+    seen = {}
+
+    class FakeSession:
+        def __init__(self, *a, **kw):
+            pass
+
+        def run(self, outputs, inputs):
+            seen["features"] = inputs["input_features"]
+            return [np.array([[0.75]], np.float32)]
+
+    monkeypatch.setattr(listen.ort, "InferenceSession", FakeSession)
+    model = listen.SmartTurn("model.onnx")
+    assert model.probability(frames_of((1.0, True))) == pytest.approx(0.75)
+    assert seen["features"].shape == (1, 80, 800)
+    assert seen["features"].dtype == np.float32

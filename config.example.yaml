@@ -79,8 +79,22 @@ audio:
   sample_rate: 16000
   channels: 1
   record_seconds: 8                     # Max recording length after wake word
-  silence_threshold: 500                # Stop recording after this many ms of silence
+  silence_threshold: 500                # Stop recording after this many ms of silence (used when Smart Turn is off)
   speech_threshold: 500                 # Mic RMS level counted as speech (raise in noisy rooms)
+
+# -----------------------------------------------------------------------------
+# Conversation (barge-in, end-of-turn detection, follow-ups)
+# -----------------------------------------------------------------------------
+conversation:
+  barge_in: true                        # Talk over the assistant to stop it and ask something else.
+                                        # Needs echo cancellation if the mic can hear the speaker (see README)
+  barge_in_ms: 300                      # How long you must speak before it stops talking
+  vad_threshold: 0.5                    # 0.0–1.0, Silero VAD score counted as speech
+  smart_turn: true                      # Use the Smart Turn model to tell a pause from the end of a question
+  smart_turn_model: "models/smart-turn/smart-turn-v3.2-cpu.onnx"
+  pause_ms: 500                         # Pause length that makes Smart Turn check whether you've finished
+  max_pause_ms: 2000                    # End the turn after this much silence, whatever Smart Turn says
+  follow_up_seconds: 5                  # Keep listening this long after a reply, no wake word needed (0 = off)
 
 # -----------------------------------------------------------------------------
 # Behaviour
