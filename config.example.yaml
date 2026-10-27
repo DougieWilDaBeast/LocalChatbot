@@ -35,6 +35,7 @@ model:
   max_tokens: 500                       # Reply cap; a reply that hits it is trimmed to its last full sentence
   context_window: 4096                  # Reduce if you hit memory limits
   think: false                          # Gemma 4 reasons before answering by default; far too slow for voice on CPU
+  keep_alive: -1                        # How long Ollama keeps the model loaded between questions (-1 = always, or e.g. "30m")
   timeout: 300                          # Seconds to wait for a reply (a 500-token answer takes ~150s on CPU)
 
 # -----------------------------------------------------------------------------
