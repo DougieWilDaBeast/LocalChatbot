@@ -159,6 +159,14 @@ class Transcriber:
 # LLM (Ollama)
 # =============================================================================
 
+def trim_to_sentence(text: str) -> str:
+    """Cut text back to its last complete sentence, if it has one."""
+    if text.endswith((".", "!", "?")):
+        return text
+    end = max(text.rfind(p) for p in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
+    return text[:end + 1] if end > 0 else text
+
+
 class LLMClient:
     def __init__(self, cfg: dict):
         self.model = cfg["model"]["name"]
@@ -222,6 +230,7 @@ class LLMClient:
                 for part in reply
             )
         reply = str(reply).strip()
+        truncated = data.get("done_reason") == "length"
 
         if not reply:
             alt_reply = data.get("response") or data.get("content") or data.get("output_text")
@@ -253,6 +262,11 @@ class LLMClient:
             gen_r.raise_for_status()
             gen_data = gen_r.json()
             reply = str(gen_data.get("response", "")).strip()
+            truncated = gen_data.get("done_reason") == "length"
+
+        if reply and truncated:
+            # Hit max_tokens mid-sentence: speak only the complete sentences
+            reply = trim_to_sentence(reply)
 
         if not reply:
             if self.debug:

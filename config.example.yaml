@@ -32,10 +32,10 @@ model:
   # name: "gemma3:1b"                   # Faster, lighter, less capable
   host: "http://localhost:11434"        # Ollama server URL
   temperature: 0.7
-  max_tokens: 300                       # Keep responses short for voice output
+  max_tokens: 500                       # Reply cap; a reply that hits it is trimmed to its last full sentence
   context_window: 4096                  # Reduce if you hit memory limits
   think: false                          # Gemma 4 reasons before answering by default; far too slow for voice on CPU
-  timeout: 300                          # Seconds to wait for a reply (a 300-token answer takes ~90s on CPU)
+  timeout: 300                          # Seconds to wait for a reply (a 500-token answer takes ~150s on CPU)
 
 # -----------------------------------------------------------------------------
 # Speech-to-Text (faster-whisper)
