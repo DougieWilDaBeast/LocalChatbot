@@ -22,14 +22,13 @@ Designed as a local-first voice assistant template you can personalize after clo
 
 | Layer            | Tool                                                        | Purpose                             |
 | ---------------- | ----------------------------------------------------------- | ----------------------------------- |
-| Model Serving    | [Ollama](https://ollama.ai)                                 | Runs Gemma locally via REST API     |
-| LLM              | Gemma 3 4B (Q4) or Gemma 4 E4B                              | Conversational intelligence         |
+| Model Serving    | [Ollama](https://ollama.com)                                | Runs Gemma locally via REST API     |
+| LLM              | Gemma 4 E4B (default) or Gemma 3 4B                         | Conversational intelligence         |
 | Speech-to-Text   | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Offline transcription (small model) |
 | Wake Word        | [openWakeWord](https://github.com/dscripka/openWakeWord)    | Passive trigger detection           |
-| Text-to-Speech   | [Piper TTS](https://github.com/rhasspy/piper)               | Fast offline voice synthesis        |
+| Text-to-Speech   | [Piper TTS](https://github.com/OHF-Voice/piper1-gpl)        | Fast offline voice synthesis        |
 | Orchestration    | Python 3.12                                                 | Pipeline glue                       |
 | Auto-start       | systemd                                                     | Runs as a service on boot           |
-| GPU Acceleration | Intel oneAPI / OpenVINO                                     | iGPU offload for faster inference   |
 
 ---
 
@@ -66,7 +65,6 @@ local-chatbot/
 ├── requirements.txt
 ├── assistant.py              # Main pipeline orchestrator
 ├── setup.sh                  # Full environment setup
-├── install_openvino.sh       # Intel GPU acceleration setup
 ├── test_pipeline.sh          # Test each layer individually
 ├── install_service.sh        # Install systemd service
 ├── nuc-assistant.service     # systemd template (install script fills local values)
@@ -83,7 +81,6 @@ git clone https://github.com/<your-username>/<your-repo>.git
 cd <your-repo>
 
 # 2. Run the setup script
-chmod +x setup.sh
 ./setup.sh
 
 # 3. Create your local config from template
@@ -115,18 +112,16 @@ After cloning, update these values in `config.yaml`:
 | Model          | RAM Required | Speed (CPU) | Quality   | Recommended For          |
 | -------------- | ------------ | ----------- | --------- | ------------------------ |
 | Gemma 3 1B Q4  | ~1.5GB       | Fast        | Good      | Very low-spec hardware   |
-| Gemma 3 4B Q4  | ~4GB         | Comfortable | Great     | **This build (default)** |
-| Gemma 4 E4B Q4 | ~6GB         | Comfortable | Excellent | This build (upgrade)     |
+| Gemma 3 4B Q4  | ~4GB         | Comfortable | Great     | Lighter alternative      |
+| Gemma 4 E4B Q4 | ~6GB         | Comfortable | Excellent | **This build (default)** |
 
-With 32GB RAM this NUC runs Gemma 3 4B effortlessly with significant headroom.
+With 32GB RAM this NUC runs either model with significant headroom. Change `model.name` in `config.yaml` and `ollama pull` the model to switch.
 
 ---
 
 ## Intel GPU Acceleration
 
-The i5-1135G7 includes Intel Iris Xe Graphics which supports inference offloading via Intel oneAPI and OpenVINO. See [docs/OPENVINO.md](docs/OPENVINO.md) for the full acceleration setup.
-
-Expected speedup: **2–4x** over CPU-only inference on the 4B model.
+Everything currently runs on the CPU. The i5-1135G7's Iris Xe iGPU can be used for acceleration, and this is on the roadmap: Ollama's Vulkan backend for the LLM, and OpenVINO GenAI for Whisper (faster-whisper itself has no Intel GPU backend). See [HARDWARE.md](HARDWARE.md) for notes.
 
 ---
 
@@ -141,9 +136,16 @@ The system prompt is configured in `config.yaml` (created from `config.example.y
 - [x] Base pipeline (STT → LLM → TTS)
 - [x] Wake word detection
 - [x] systemd auto-start
-- [ ] Intel Iris Xe GPU offload via oneAPI
-- [ ] OpenVINO-optimised Whisper inference
-- [ ] Conversation memory (rolling context window)
+- [x] Conversation memory (rolling context window)
+- [ ] Stream LLM replies to TTS sentence by sentence
+- [ ] Intel Iris Xe LLM offload via Ollama's Vulkan backend
+- [ ] OpenVINO GenAI Whisper inference on the iGPU
 - [ ] Physical button trigger (GPIO or USB)
 - [ ] 3D printed case (Bambu Lab X1 Carbon)
 - [ ] Web UI for config editing
+
+---
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE). This matches [Piper TTS](https://github.com/OHF-Voice/piper1-gpl), which is also GPL-3.0.

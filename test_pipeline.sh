@@ -19,43 +19,56 @@ echo ""
 
 source venv/bin/activate 2>/dev/null || { fail "Virtual environment not found. Run setup.sh first."; exit 1; }
 
+# Read settings from config.yaml (falls back to config.example.yaml)
+CONFIG="config.yaml"
+[ -f "$CONFIG" ] || { info "config.yaml not found, using config.example.yaml"; CONFIG="config.example.yaml"; }
+cfg() {
+    python3 -c "import sys, yaml; c = yaml.safe_load(open('$CONFIG')); print(eval('c' + sys.argv[1]))" "$1"
+}
+MODEL=$(cfg "['model']['name']")
+OLLAMA_HOST=$(cfg "['model'].get('host', 'http://localhost:11434')")
+STT_MODEL=$(cfg "['stt']['model']")
+VOICE_MODEL=$(cfg "['tts']['model']")
+VOICE_CONFIG=$(cfg "['tts']['config']")
+
 # --- 1. Ollama ---
-info "Testing Ollama..."
-if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    RESPONSE=$(curl -s http://localhost:11434/api/generate \
-        -d '{"model":"gemma3:4b","prompt":"Say the single word: working","stream":false}' \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('response','').strip())")
+info "Testing Ollama ($MODEL)..."
+if curl -s "$OLLAMA_HOST/api/tags" > /dev/null 2>&1; then
+    RESPONSE=$(curl -s "$OLLAMA_HOST/api/generate" \
+        -d "{\"model\":\"$MODEL\",\"prompt\":\"Say the single word: working\",\"stream\":false}" \
+        | python3 -c "import sys,json; print(json.load(sys.stdin).get('response','').strip())" || true)
     if [ -n "$RESPONSE" ]; then
         pass "Ollama: '$RESPONSE'"
     else
-        fail "Ollama responded but empty output"
+        fail "Ollama responded but gave no output — is the model pulled? ollama pull $MODEL"
     fi
 else
     fail "Ollama not running — sudo systemctl start ollama"
 fi
 
 # --- 2. faster-whisper ---
-info "Testing faster-whisper import..."
+info "Testing faster-whisper ($STT_MODEL)..."
 python3 -c "
 from faster_whisper import WhisperModel
-model = WhisperModel('tiny', device='cpu', compute_type='int8')
+model = WhisperModel('$STT_MODEL', device='cpu', compute_type='int8')
 print('faster-whisper loaded successfully')
-" && pass "faster-whisper: model loads" || fail "faster-whisper: import failed"
+" && pass "faster-whisper: model loads" || fail "faster-whisper: model failed to load"
 
 # --- 3. Piper TTS ---
 info "Testing Piper TTS..."
-if [ -f "/usr/local/bin/piper" ]; then
-    VOICE_MODEL="models/piper/en_GB-alba-medium.onnx"
-    VOICE_CONFIG="models/piper/en_GB-alba-medium.onnx.json"
-    if [ -f "$VOICE_MODEL" ]; then
-        echo "Assistant is ready." | piper \
-            --model "$VOICE_MODEL" \
-            --config "$VOICE_CONFIG" \
-            --output_file /tmp/test_tts.wav 2>/dev/null
-        if [ -f "/tmp/test_tts.wav" ]; then
-            pass "Piper TTS: wav file generated"
-            info "Playing test audio..."
-            python3 -c "
+if [ -f "$VOICE_MODEL" ]; then
+    rm -f /tmp/test_tts.wav
+    python3 -c "
+import wave
+from piper import PiperVoice
+voice = PiperVoice.load('$VOICE_MODEL', config_path='$VOICE_CONFIG')
+with wave.open('/tmp/test_tts.wav', 'wb') as f:
+    voice.synthesize_wav('Assistant is ready.', f)
+" || true
+    if [ -s "/tmp/test_tts.wav" ]; then
+        pass "Piper TTS: wav file generated"
+        info "Playing test audio..."
+        python3 -c "
 import soundfile as sf
 import sounddevice as sd
 data, sr = sf.read('/tmp/test_tts.wav')
@@ -63,14 +76,11 @@ sd.play(data, sr)
 sd.wait()
 print('Audio played')
 " && pass "Piper TTS: audio played" || fail "Piper TTS: audio playback failed"
-        else
-            fail "Piper TTS: no output file generated"
-        fi
     else
-        fail "Piper voice model not found at $VOICE_MODEL — run setup.sh"
+        fail "Piper TTS: no output file generated"
     fi
 else
-    fail "Piper binary not found at /usr/local/bin/piper — run setup.sh"
+    fail "Piper voice model not found at $VOICE_MODEL — run setup.sh"
 fi
 
 # --- 4. Audio devices ---

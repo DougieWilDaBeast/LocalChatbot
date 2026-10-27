@@ -12,6 +12,5 @@ __pycache__/
 # Runtime outputs
 *.log
 
-# Local models and generated audio artifacts
+# Local models
 models/piper/
-/tmp/*.wav
