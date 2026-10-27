@@ -143,3 +143,9 @@ The system prompt is configured in `config.yaml` (created from `config.example.y
 - [ ] Physical button trigger (GPIO or USB)
 - [ ] 3D printed case (Bambu Lab X1 Carbon)
 - [ ] Web UI for config editing
+
+---
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE). This matches [Piper TTS](https://github.com/OHF-Voice/piper1-gpl), which is also GPL-3.0.
