@@ -33,7 +33,7 @@ sudo apt-get update -qq && sudo apt-get upgrade -y -qq
 sudo apt-get install -y \
     curl wget git python3 python3-pip python3-venv \
     libportaudio2 \
-    ffmpeg alsa-utils pulseaudio \
+    ffmpeg alsa-utils pulseaudio zstd \
     build-essential cmake pkg-config \
     libasound2-dev libsndfile1-dev
 log "System packages installed"
@@ -50,9 +50,18 @@ else
 fi
 
 info "Starting Ollama service..."
-sudo systemctl enable ollama
-sudo systemctl start ollama
-sleep 3
+if [ -d /run/systemd/system ]; then
+    sudo systemctl enable ollama
+    sudo systemctl start ollama
+else
+    # No systemd (container, WSL without systemd): run the server in the background
+    warn "systemd not running, starting 'ollama serve' in the background"
+    nohup ollama serve > /tmp/ollama.log 2>&1 &
+fi
+for _ in $(seq 1 30); do
+    curl -s http://localhost:11434/api/tags > /dev/null && break
+    sleep 1
+done
 
 # Default model, matching config.example.yaml
 MODEL="gemma4:e4b"

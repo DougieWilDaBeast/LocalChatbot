@@ -159,12 +159,22 @@ class Transcriber:
 # LLM (Ollama)
 # =============================================================================
 
+def trim_to_sentence(text: str) -> str:
+    """Cut text back to its last complete sentence, if it has one."""
+    if text.endswith((".", "!", "?")):
+        return text
+    end = max(text.rfind(p) for p in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
+    return text[:end + 1] if end > 0 else text
+
+
 class LLMClient:
     def __init__(self, cfg: dict):
         self.model = cfg["model"]["name"]
         self.temperature = cfg["model"]["temperature"]
         self.max_tokens = cfg["model"]["max_tokens"]
         self.context_window = cfg["model"].get("context_window", 4096)
+        self.think = cfg["model"].get("think", False)
+        self.timeout = cfg["model"].get("timeout", 300)
         self.system_prompt = cfg["assistant"]["system_prompt"].strip()
         self.memory_size = cfg["behaviour"]["conversation_memory"]
         self.debug = cfg["behaviour"].get("debug_mode", False)
@@ -197,6 +207,7 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "stream": False,
+            "think": self.think,
             "options": {
                 "temperature": self.temperature,
                 "num_predict": self.max_tokens,
@@ -207,7 +218,7 @@ class LLMClient:
         r = requests.post(
             f"{self.base_url}/api/chat",
             json=payload,
-            timeout=60,
+            timeout=self.timeout,
         )
         r.raise_for_status()
 
@@ -219,6 +230,7 @@ class LLMClient:
                 for part in reply
             )
         reply = str(reply).strip()
+        truncated = data.get("done_reason") == "length"
 
         if not reply:
             alt_reply = data.get("response") or data.get("content") or data.get("output_text")
@@ -235,6 +247,7 @@ class LLMClient:
                 "prompt": user_text,
                 "system": self.system_prompt,
                 "stream": False,
+                "think": self.think,
                 "options": {
                     "temperature": self.temperature,
                     "num_predict": self.max_tokens,
@@ -244,11 +257,16 @@ class LLMClient:
             gen_r = requests.post(
                 f"{self.base_url}/api/generate",
                 json=gen_payload,
-                timeout=60,
+                timeout=self.timeout,
             )
             gen_r.raise_for_status()
             gen_data = gen_r.json()
             reply = str(gen_data.get("response", "")).strip()
+            truncated = gen_data.get("done_reason") == "length"
+
+        if reply and truncated:
+            # Hit max_tokens mid-sentence: speak only the complete sentences
+            reply = trim_to_sentence(reply)
 
         if not reply:
             if self.debug:
