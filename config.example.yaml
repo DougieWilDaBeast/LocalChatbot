@@ -26,10 +26,11 @@ assistant:
 # LLM Model
 # -----------------------------------------------------------------------------
 model:
-  name: "gemma3:4b"                     # ollama model name
+  name: "gemma4:e4b"                    # ollama model name
   # Alternatives:
-  # name: "gemma4:e4b"                  # Newer, more capable, needs ~6GB RAM
+  # name: "gemma3:4b"                   # Previous generation, a little lighter
   # name: "gemma3:1b"                   # Faster, lighter, less capable
+  host: "http://localhost:11434"        # Ollama server URL
   temperature: 0.7
   max_tokens: 300                       # Keep responses short for voice output
   context_window: 4096                  # Reduce if you hit memory limits
@@ -42,7 +43,6 @@ stt:
   language: "en"
   device: "cpu"                         # cpu | cuda | auto
   compute_type: "int8"                  # int8 for CPU efficiency
-  # For Intel Iris Xe acceleration via OpenVINO, see docs/OPENVINO.md
 
 # -----------------------------------------------------------------------------
 # Wake Word (openWakeWord)
@@ -59,10 +59,10 @@ wake_word:
 tts:
   model: "models/piper/en_GB-alba-medium.onnx"
   config: "models/piper/en_GB-alba-medium.onnx.json"
-  # Alternative voices — download from HuggingFace rhasspy/piper-voices:
+  # Alternative voices — list with: python3 -m piper.download_voices
+  # Download with: python3 -m piper.download_voices --download-dir models/piper <voice>
   # en_US-lessac-medium    (American, clear)
   # en_GB-alan-medium      (British male)
-  # en_IE-                 (Irish — check for availability)
 
 # -----------------------------------------------------------------------------
 # Audio Hardware
@@ -74,7 +74,7 @@ audio:
   channels: 1
   record_seconds: 8                     # Max recording length after wake word
   silence_threshold: 500                # Stop recording after this many ms of silence
-  chunk_size: 1280
+  speech_threshold: 500                 # Mic RMS level counted as speech (raise in noisy rooms)
 
 # -----------------------------------------------------------------------------
 # Behaviour

@@ -164,11 +164,12 @@ class LLMClient:
         self.model = cfg["model"]["name"]
         self.temperature = cfg["model"]["temperature"]
         self.max_tokens = cfg["model"]["max_tokens"]
+        self.context_window = cfg["model"].get("context_window", 4096)
         self.system_prompt = cfg["assistant"]["system_prompt"].strip()
         self.memory_size = cfg["behaviour"]["conversation_memory"]
         self.debug = cfg["behaviour"].get("debug_mode", False)
         self.history = deque(maxlen=self.memory_size * 2)  # user+assistant pairs
-        self.base_url = "http://localhost:11434"
+        self.base_url = cfg["model"].get("host", "http://localhost:11434").rstrip("/")
 
         print(f"[→] Connecting to Ollama ({self.model})...")
         self._check_connection()
@@ -178,8 +179,9 @@ class LLMClient:
         try:
             r = requests.get(f"{self.base_url}/api/tags", timeout=5)
             r.raise_for_status()
-            models = [m["name"] for m in r.json().get("models", [])]
-            if not any(self.model.split(":")[0] in m for m in models):
+            models = {m["name"] for m in r.json().get("models", [])}
+            wanted = self.model if ":" in self.model else f"{self.model}:latest"
+            if wanted not in models:
                 print(f"[!] Model '{self.model}' not found. Run: ollama pull {self.model}")
         except requests.ConnectionError:
             print("[✗] Cannot connect to Ollama. Is it running? sudo systemctl start ollama")
@@ -198,6 +200,7 @@ class LLMClient:
             "options": {
                 "temperature": self.temperature,
                 "num_predict": self.max_tokens,
+                "num_ctx": self.context_window,
             },
         }
 
@@ -235,6 +238,8 @@ class LLMClient:
                 "options": {
                     "temperature": self.temperature,
                     "num_predict": self.max_tokens,
+                    "num_ctx": self.context_window,
+                "num_ctx": self.context_window,
                 },
             }
             gen_r = requests.post(
@@ -353,6 +358,8 @@ class WakeWordDetector:
                 for model_name, score in prediction.items():
                     if score >= self.threshold:
                         print(f"[Wake word detected: {score:.2f}]")
+                        # Clear buffered audio so the same utterance can't re-trigger
+                        self.model.reset()
                         return
 
 
@@ -414,6 +421,7 @@ def main():
                 sample_rate=cfg["audio"]["sample_rate"],
                 max_seconds=cfg["audio"]["record_seconds"],
                 silence_ms=cfg["audio"]["silence_threshold"],
+                threshold=cfg["audio"].get("speech_threshold", 500),
                 input_device=cfg["audio"]["input_device"],
             )
 

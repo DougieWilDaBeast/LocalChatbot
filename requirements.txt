@@ -1,35 +1,32 @@
 # NUC Offline Voice Assistant - Python Dependencies
+# Target: Python 3.12 (Ubuntu 24.04 LTS)
 
 # Speech-to-text (faster than original Whisper on CPU)
-faster-whisper==1.0.3
+faster-whisper==1.2.1
 
-# Wake word detection (installed with --no-deps to skip tflite-runtime on Python 3.12)
-# Uses onnxruntime backend instead — see setup.sh
+# Wake word detection (installed with --no-deps to skip tflite-runtime, which has
+# no Python 3.12 wheels). Uses the onnxruntime backend instead — see setup.sh.
+# 0.6.0 is still the latest upstream release.
 openwakeword==0.6.0
 
-# ONNX inference backend (used by openwakeword instead of tflite on Python 3.12+)
-onnxruntime>=1.14.0
+# ONNX inference backend (used by openwakeword instead of tflite)
+onnxruntime==1.31.1
 
 # Required by openwakeword (not auto-installed due to --no-deps)
-scikit-learn>=1.0
+scikit-learn==1.9.1
+scipy==1.18.1
+tqdm>=4.66,<5
 
 # Audio capture and playback
-sounddevice==0.4.6
-soundfile==0.12.1
-numpy==1.26.4
-pyaudio==0.2.14
+sounddevice==0.5.6
+soundfile==0.14.0
+numpy==2.5.4
 
-# Ollama Python client
-ollama==0.3.3
-
-# HTTP client for Ollama REST API (fallback)
-requests==2.31.0
+# HTTP client for the Ollama REST API
+requests==2.34.2
 
 # Config management
-pyyaml==6.0.1
+pyyaml==6.0.3
 
 # Text-to-Speech (Piper via Python package — no binary needed)
-piper-tts>=1.4.0
-
-# Utilities
-scipy==1.13.0
+piper-tts==1.8.0

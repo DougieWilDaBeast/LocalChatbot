@@ -28,9 +28,10 @@ With 32GB RAM there is no memory pressure at any of these sizes.
 
 - 96 Execution Units on the i5-1135G7
 - Shares system RAM (unified memory) — no dedicated VRAM
-- Supported by Intel oneAPI, OpenCL, and OpenVINO
-- OpenVINO acceleration for Whisper STT gives the most practical speedup
-- Full Ollama iGPU offload requires building llama.cpp with SYCL support (advanced)
+- Supported by Intel oneAPI, OpenCL, Vulkan, and OpenVINO
+- faster-whisper (CTranslate2) has no Intel GPU backend; Whisper on the iGPU needs OpenVINO GenAI's Whisper pipeline instead
+- Ollama has an experimental Vulkan backend that can offload the LLM to the iGPU without building llama.cpp yourself
+- The iGPU figures in the table above are estimates, not measurements
 
 ---
 
@@ -39,7 +40,7 @@ With 32GB RAM there is no memory pressure at any of these sizes.
 If audio is not working out of the box:
 
 ```bash
-# Check PulseAudio is running
+# Check PulseAudio is running (installed by setup.sh)
 systemctl --user status pulseaudio
 
 # List ALSA devices

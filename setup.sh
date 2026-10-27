@@ -32,7 +32,7 @@ info "Updating system packages..."
 sudo apt-get update -qq && sudo apt-get upgrade -y -qq
 sudo apt-get install -y \
     curl wget git python3 python3-pip python3-venv \
-    portaudio19-dev libportaudio2 libportaudiocpp0 \
+    libportaudio2 \
     ffmpeg alsa-utils pulseaudio \
     build-essential cmake pkg-config \
     libasound2-dev libsndfile1-dev
@@ -45,7 +45,7 @@ info "Installing Ollama..."
 if command -v ollama &> /dev/null; then
     warn "Ollama already installed, skipping"
 else
-    curl -fsSL https://ollama.ai/install.sh | sh
+    curl -fsSL https://ollama.com/install.sh | sh
     log "Ollama installed"
 fi
 
@@ -54,14 +54,15 @@ sudo systemctl enable ollama
 sudo systemctl start ollama
 sleep 3
 
-info "Pulling Gemma 3 4B model (this will take a few minutes)..."
-ollama pull gemma3:4b
-log "Gemma 3 4B model ready"
+# Default model, matching config.example.yaml
+MODEL="gemma4:e4b"
 
-# Optionally pull the newer Gemma 4 E4B
-# Uncomment if you want to test the newer model
-# warn "Pulling Gemma 4 E4B (larger download)..."
-# ollama pull gemma4:e4b
+info "Pulling $MODEL model (this will take a few minutes)..."
+ollama pull "$MODEL"
+log "$MODEL model ready"
+
+# For lower-spec hardware, a lighter model:
+# ollama pull gemma3:4b
 
 # -----------------------------------------------------------------------------
 # 3. Python Virtual Environment
@@ -80,12 +81,8 @@ pip install openwakeword==0.6.0 --no-deps -q
 log "Python dependencies installed"
 
 # -----------------------------------------------------------------------------
-# 4. Piper TTS
+# 4. Piper TTS voice (piper-tts itself is installed from requirements.txt)
 # -----------------------------------------------------------------------------
-info "Installing Piper TTS (Python package)..."
-pip install piper-tts -q
-log "Piper TTS installed"
-
 info "Downloading Piper voice model (en_GB-alba-medium)..."
 mkdir -p models/piper
 python3 -m piper.download_voices --download-dir models/piper en_GB-alba-medium \
@@ -132,7 +129,7 @@ warn "Check the device indices above and update config.yaml accordingly"
 # -----------------------------------------------------------------------------
 info "Testing Ollama API..."
 RESPONSE=$(curl -s http://localhost:11434/api/generate \
-    -d '{"model":"gemma3:4b","prompt":"Reply with just the word ready.","stream":false}' \
+    -d "{\"model\":\"$MODEL\",\"prompt\":\"Reply with just the word ready.\",\"stream\":false}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])" 2>/dev/null || echo "FAIL")
 
 if [[ "$RESPONSE" == *"FAIL"* ]]; then
@@ -155,7 +152,4 @@ echo "  2. Edit config:        nano config.yaml"
 echo "  3. Test the pipeline:  ./test_pipeline.sh"
 echo "  4. Run the assistant:  source venv/bin/activate && python3 assistant.py"
 echo "  5. Install as service: sudo ./install_service.sh"
-echo ""
-echo "For Intel Iris Xe GPU acceleration:"
-echo "  ./install_openvino.sh"
 echo ""
