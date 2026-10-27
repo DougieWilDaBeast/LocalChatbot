@@ -45,7 +45,7 @@ Designed as a local-first voice assistant template you can personalize after clo
      │ transcribed text
      ▼
 [Ollama / Gemma]
-     │ response text
+     │ reply, streamed one sentence at a time
      ▼
 [Piper TTS]
      │ audio
@@ -64,7 +64,15 @@ local-chatbot/
 ├── config.yaml               # Local runtime config (do not commit private values)
 ├── requirements.txt
 ├── requirements-dev.txt      # pytest and ruff
-├── assistant.py              # Main pipeline orchestrator
+├── assistant.py              # Entry point: python3 assistant.py
+├── nuc_assistant/            # The assistant itself
+│   ├── main.py               #   Main conversation loop and command-line options
+│   ├── config.py             #   Loads config.yaml, fills defaults, checks values
+│   ├── audio.py              #   Mic recording and speaker playback
+│   ├── wakeword.py           #   Wake word detection (openWakeWord)
+│   ├── stt.py                #   Speech-to-text (faster-whisper)
+│   ├── llm.py                #   Ollama chat, streamed sentence by sentence
+│   └── tts.py                #   Text-to-speech (Piper)
 ├── setup.sh                  # Full environment setup
 ├── test_pipeline.sh          # Test each layer individually
 ├── tests/                    # Unit tests (no mic, speaker or models needed)
