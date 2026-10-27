@@ -4,8 +4,9 @@ import argparse
 import sys
 import time
 
-from .audio import play_beep, record_until_silence
+from .audio import play_beep
 from .config import ConfigError, load_config
+from .listen import Listener
 from .llm import LLMClient
 from .stt import Transcriber
 from .tts import Speaker
@@ -46,6 +47,8 @@ def main():
     llm = LLMClient(cfg)
     speaker = Speaker(cfg)
     wake_detector = WakeWordDetector(cfg)
+    listener = Listener(cfg)
+    follow_up = cfg["conversation"]["follow_up_seconds"]
 
     # Signal ready
     if cfg["behaviour"]["startup_sound"]:
@@ -56,27 +59,22 @@ def main():
     print("\n[Ready]\n")
 
     # Main conversation loop
+    audio = None  # a turn already heard: a barge-in or a follow-up question
     while True:
         try:
-            # Wait for trigger
-            wake_detector.wait_for_wake_word()
+            if audio is None:
+                # Wait for trigger
+                wake_detector.wait_for_wake_word()
 
-            # Signal that we're listening
-            play_beep(1200, 0.08)
-            if debug:
-                print("[Recording...]")
-
-            # Record speech
-            audio = record_until_silence(
-                sample_rate=cfg["audio"]["sample_rate"],
-                max_seconds=cfg["audio"]["record_seconds"],
-                silence_ms=cfg["audio"]["silence_threshold"],
-                threshold=cfg["audio"].get("speech_threshold", 500),
-                input_device=cfg["audio"]["input_device"],
-            )
+                # Signal that we're listening
+                play_beep(1200, 0.08)
+                if debug:
+                    print("[Recording...]")
+                audio = listener.record_turn()
 
             # Transcribe
             text = transcriber.transcribe(audio, cfg["audio"]["sample_rate"])
+            audio = None
 
             if not text:
                 if debug:
@@ -86,8 +84,26 @@ def main():
             if debug:
                 print(f"[You]: {text}")
 
-            # Get the LLM response and speak it sentence by sentence
-            speaker.speak_stream(llm.chat_stream(text), debug=debug)
+            # Get the LLM response and speak it sentence by sentence. With
+            # barge-in, talking over it stops the reply and starts a new turn.
+            monitor = listener.barge_in_monitor()
+            if monitor is None:
+                speaker.speak_stream(llm.chat_stream(text), debug=debug)
+            else:
+                with monitor:
+                    speaker.speak_stream(llm.chat_stream(text, stop=monitor.heard),
+                                         debug=debug, stop=monitor.heard)
+                if monitor.heard.is_set():
+                    if debug:
+                        print("[Interrupted, listening...]")
+                    audio = listener.record_turn(initial=monitor.frames)
+                    continue
+
+            # Follow-up window: keep listening briefly without the wake word
+            if follow_up:
+                if debug:
+                    print(f"[Listening for a follow-up ({follow_up}s)...]")
+                audio = listener.record_turn(wait_seconds=follow_up)
 
         except KeyboardInterrupt:
             print("\n\n[Shutting down]")

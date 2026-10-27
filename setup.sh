@@ -109,6 +109,16 @@ print('openWakeWord models downloaded')
 " && log "Wake word models ready" || warn "openWakeWord model download failed — wake word may not work until models are available"
 
 # -----------------------------------------------------------------------------
+# 5b. Smart Turn end-of-turn model (BSD-2-Clause, pipecat-ai/smart-turn-v3)
+# -----------------------------------------------------------------------------
+info "Downloading Smart Turn model..."
+mkdir -p models/smart-turn
+curl -fsSL -o models/smart-turn/smart-turn-v3.2-cpu.onnx \
+    "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx" \
+    && log "Smart Turn model ready" \
+    || warn "Smart Turn download failed — the assistant will fall back to the silence timer"
+
+# -----------------------------------------------------------------------------
 # 6. Audio device check
 # -----------------------------------------------------------------------------
 info "Checking audio devices..."

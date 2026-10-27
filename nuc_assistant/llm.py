@@ -84,8 +84,11 @@ class LLMClient:
         """Get the whole reply as one string."""
         return " ".join(self.chat_stream(user_text))
 
-    def chat_stream(self, user_text: str):
-        """Yield the reply one sentence at a time, as Ollama generates it."""
+    def chat_stream(self, user_text: str, stop=None):
+        """Yield the reply one sentence at a time, as Ollama generates it.
+        If `stop` (a threading.Event) is set, e.g. because the user talked over
+        the reply, stop reading: leaving the request drops the connection,
+        which makes Ollama stop generating."""
         self.history.append({"role": "user", "content": user_text})
 
         messages = [{"role": "system", "content": self.system_prompt}]
@@ -111,6 +114,8 @@ class LLMClient:
         ) as r:
             r.raise_for_status()
             for line in r.iter_lines():
+                if stop is not None and stop.is_set():
+                    break
                 if not line:
                     continue
                 chunk = json.loads(line)
@@ -122,6 +127,15 @@ class LLMClient:
                     sentence, buffer = pop_sentence(buffer)
                 if chunk.get("done"):
                     truncated = chunk.get("done_reason") == "length"
+
+        if stop is not None and stop.is_set():
+            # Interrupted: remember the part of the reply generated before the
+            # user cut in, or forget the question if no answer had started.
+            if spoken:
+                self.history.append({"role": "assistant", "content": " ".join(spoken)})
+            elif self.history:
+                self.history.pop()
+            return
 
         # Whatever is left had no sentence ending. If the reply hit max_tokens
         # it was cut off mid-sentence, so drop it unless it's all we have.

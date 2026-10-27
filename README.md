@@ -29,6 +29,8 @@ A personal project by [Will Douglas](https://github.com/DougieWilDaBeast), built
 | Speech-to-Text   | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Offline transcription (small model) |
 | Wake Word        | [openWakeWord](https://github.com/dscripka/openWakeWord)    | Passive trigger detection           |
 | Text-to-Speech   | [Piper TTS](https://github.com/OHF-Voice/piper1-gpl)        | Fast offline voice synthesis        |
+| Voice Activity   | [Silero VAD](https://github.com/snakers4/silero-vad) (bundled with openWakeWord) | Hears when you start and stop talking |
+| End of Turn      | [Smart Turn v3.2](https://huggingface.co/pipecat-ai/smart-turn-v3) | Tells a pause from a finished question |
 | Orchestration    | Python 3.12                                                 | Pipeline glue                       |
 | Auto-start       | systemd                                                     | Runs as a service on boot           |
 
@@ -40,10 +42,12 @@ A personal project by [Will Douglas](https://github.com/DougieWilDaBeast), built
 flowchart TD
     Mic([Microphone]) --> Wake[openWakeWord<br/>listens for the wake word]
     Wake -- silence --> Wake
-    Wake -- wake word heard --> STT[faster-whisper<br/>speech to text]
+    Wake -- wake word heard --> Turn[Silero VAD + Smart Turn<br/>waits until you finish]
+    Turn -- your question --> STT[faster-whisper<br/>speech to text]
     STT -- transcribed text --> LLM[Ollama + Gemma<br/>local LLM]
     LLM -- reply, streamed one sentence at a time --> TTS[Piper<br/>text to speech]
     TTS --> Speaker([Speaker])
+    Speaker -- you talk over it, or ask a follow-up within 5 s --> Turn
 ```
 
 Every step runs on the NUC itself. Replies are streamed to Piper a sentence at a time, so the assistant starts speaking before the LLM has finished thinking.
@@ -64,6 +68,7 @@ LocalChatbot/
 │   ├── main.py               #   Main conversation loop and command-line options
 │   ├── config.py             #   Loads config.yaml, fills defaults, checks values
 │   ├── audio.py              #   Mic recording and speaker playback
+│   ├── listen.py             #   Voice activity, end of turn (Smart Turn), barge-in
 │   ├── wakeword.py           #   Wake word detection (openWakeWord)
 │   ├── stt.py                #   Speech-to-text (faster-whisper)
 │   ├── llm.py                #   Ollama chat, streamed sentence by sentence
@@ -127,6 +132,27 @@ With 32GB RAM this NUC runs either model with significant headroom. Change `mode
 ## Intel GPU Acceleration
 
 Everything currently runs on the CPU. The i5-1135G7's Iris Xe iGPU can be used for acceleration, and this is on the roadmap: Ollama's Vulkan backend for the LLM, and OpenVINO GenAI for Whisper (faster-whisper itself has no Intel GPU backend). See [HARDWARE.md](HARDWARE.md) for notes.
+
+---
+
+## Conversation: barge-in, end of turn and follow-ups
+
+The assistant listens while it talks. If you speak over it for about 300 ms it stops mid-sentence, cancels the rest of the reply, and treats what you said as your next question. It decides you've finished speaking with the Smart Turn model, so a short pause mid-sentence doesn't cut you off, and after each reply it keeps listening for 5 seconds so a follow-up doesn't need the wake word. All of this is under `conversation:` in `config.yaml`.
+
+Barge-in needs the microphone not to hear the assistant's own voice. With a headset or a speakerphone that cancels echo, nothing else is needed. With a separate speaker and mic, turn on echo cancellation in PipeWire (Ubuntu 24.04's sound server), then make the new echo-cancelled microphone the default input in Settings → Sound:
+
+```bash
+mkdir -p ~/.config/pipewire/pipewire.conf.d
+cat > ~/.config/pipewire/pipewire.conf.d/echo-cancel.conf <<'CONF'
+context.modules = [
+  { name = libpipewire-module-echo-cancel
+    args = { library.name = aec/libspa-aec-webrtc } }
+]
+CONF
+systemctl --user restart pipewire pipewire-pulse
+```
+
+If the assistant still interrupts itself, set `conversation.barge_in: false`.
 
 ---
 
