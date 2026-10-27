@@ -34,6 +34,8 @@ model:
   temperature: 0.7
   max_tokens: 300                       # Keep responses short for voice output
   context_window: 4096                  # Reduce if you hit memory limits
+  think: false                          # Gemma 4 reasons before answering by default; far too slow for voice on CPU
+  timeout: 300                          # Seconds to wait for a reply (a 300-token answer takes ~90s on CPU)
 
 # -----------------------------------------------------------------------------
 # Speech-to-Text (faster-whisper)

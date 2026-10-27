@@ -165,6 +165,8 @@ class LLMClient:
         self.temperature = cfg["model"]["temperature"]
         self.max_tokens = cfg["model"]["max_tokens"]
         self.context_window = cfg["model"].get("context_window", 4096)
+        self.think = cfg["model"].get("think", False)
+        self.timeout = cfg["model"].get("timeout", 300)
         self.system_prompt = cfg["assistant"]["system_prompt"].strip()
         self.memory_size = cfg["behaviour"]["conversation_memory"]
         self.debug = cfg["behaviour"].get("debug_mode", False)
@@ -197,6 +199,7 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "stream": False,
+            "think": self.think,
             "options": {
                 "temperature": self.temperature,
                 "num_predict": self.max_tokens,
@@ -207,7 +210,7 @@ class LLMClient:
         r = requests.post(
             f"{self.base_url}/api/chat",
             json=payload,
-            timeout=60,
+            timeout=self.timeout,
         )
         r.raise_for_status()
 
@@ -235,6 +238,7 @@ class LLMClient:
                 "prompt": user_text,
                 "system": self.system_prompt,
                 "stream": False,
+                "think": self.think,
                 "options": {
                     "temperature": self.temperature,
                     "num_predict": self.max_tokens,
@@ -244,7 +248,7 @@ class LLMClient:
             gen_r = requests.post(
                 f"{self.base_url}/api/generate",
                 json=gen_payload,
-                timeout=60,
+                timeout=self.timeout,
             )
             gen_r.raise_for_status()
             gen_data = gen_r.json()
