@@ -74,6 +74,7 @@ class Listener:
         self.max_pause_frames = conv["max_pause_ms"] // FRAME_MS
         self.silence_frames = self.audio_cfg["silence_threshold"] // FRAME_MS
         self.max_frames = self.audio_cfg["record_seconds"] * 1000 // FRAME_MS
+        self.max_samples = self.max_frames * FRAME
         self.barge_in_frames = max(1, conv["barge_in_ms"] // FRAME_MS)
 
         self.vad = load_vad()
@@ -128,6 +129,7 @@ class Listener:
 
         self.vad.reset_states()
         frames = list(initial or [])
+        heard = sum(len(f) for f in frames)  # `initial` may hold whole seconds as one array
         started = bool(frames)
         pre_roll = deque(maxlen=PRE_ROLL_FRAMES)
         wait_frames = None if wait_seconds is None else int(wait_seconds * 1000 / FRAME_MS)
@@ -153,8 +155,9 @@ class Listener:
                     continue
 
                 frames.append(frame)
+                heard += len(frame)
                 silent = 0 if speech else silent + 1
-                if len(frames) >= self.max_frames:
+                if heard >= self.max_samples:
                     break
                 if silent and self.turn_finished(frames, silent):
                     break
@@ -197,6 +200,12 @@ class SpeechMonitor:
         return False
 
     def _run(self):
+        try:
+            self._listen()
+        except Exception as e:  # e.g. the mic can't be opened twice: carry on without barge-in
+            print(f"[!] Stopped listening for barge-in: {e}")
+
+    def _listen(self):
         listener = self.listener
         vad = listener.monitor_vad
         vad.reset_states()

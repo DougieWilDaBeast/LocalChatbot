@@ -10,7 +10,8 @@
 # Assistant Identity
 # -----------------------------------------------------------------------------
 assistant:
-  name: "Jarvis"                        # What the assistant calls itself (matches the default wake word)
+  name: "Jarvis"                        # Shown at startup. Also change it in system_prompt below,
+                                        # and pick a matching wake_word.model
   # Everything in system_prompt is sent to the model as-is, so anything left in
   # it, including placeholder text, can end up being spoken. To personalise it,
   # add a line at the end such as:
@@ -76,11 +77,10 @@ tts:
 audio:
   input_device: null                    # null = system default. Set to device index from setup.sh
   output_device: null                   # null = system default
-  sample_rate: 16000
-  channels: 1
   record_seconds: 8                     # Max recording length after wake word
-  silence_threshold: 500                # Stop recording after this many ms of silence (used when Smart Turn is off)
-  speech_threshold: 500                 # Mic RMS level counted as speech (raise in noisy rooms)
+  silence_threshold: 500                # Milliseconds of silence that end a turn (used when Smart Turn is off)
+  speech_threshold: 500                 # Mic level counted as speech, only used if Silero VAD is missing
+                                        # (normally conversation.vad_threshold decides what is speech)
 
 # -----------------------------------------------------------------------------
 # Conversation (barge-in, end-of-turn detection, follow-ups)
@@ -101,6 +101,5 @@ conversation:
 # -----------------------------------------------------------------------------
 behaviour:
   startup_sound: true                   # Play a tone on boot to signal ready state
-  listening_indicator: true             # Print to stdout when listening
   conversation_memory: 6                # Number of previous exchanges to keep in context (0 = none)
   debug_mode: false                     # Set to true to print transcriptions and responses to stdout

@@ -5,18 +5,22 @@ from faster_whisper import WhisperModel
 
 
 class Transcriber:
+    """Turns a recorded turn (16 kHz int16) into text."""
+
     def __init__(self, cfg: dict):
         stt = cfg["stt"]
         print(f"[→] Loading Whisper {stt['model']} model...")
-        self.model = WhisperModel(
-            stt["model"],
-            device=stt["device"],
-            compute_type=stt["compute_type"],
-        )
+        options = dict(device=stt["device"], compute_type=stt["compute_type"])
+        try:
+            # setup.sh downloads the model, so normally nothing leaves the machine
+            self.model = WhisperModel(stt["model"], local_files_only=True, **options)
+        except Exception:
+            print(f"[→] Whisper {stt['model']} isn't downloaded yet, fetching it (needs internet once)")
+            self.model = WhisperModel(stt["model"], **options)
         self.language = stt["language"]
         print("[✓] Whisper ready")
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
+    def transcribe(self, audio: np.ndarray) -> str:
         # faster-whisper expects float32 normalised audio
         audio_f32 = audio.astype(np.float32) / 32768.0
 
