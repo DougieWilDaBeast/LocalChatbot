@@ -3,6 +3,9 @@
 import argparse
 import sys
 import time
+import traceback
+
+import requests
 
 from .audio import play_beep
 from .config import ConfigError, load_config
@@ -11,6 +14,11 @@ from .llm import LLMClient
 from .stt import Transcriber
 from .tts import Speaker
 from .wakeword import WakeWordDetector
+
+# After this many failed turns in a row (e.g. the mic was unplugged), exit so
+# systemd restarts the assistant, which also makes PortAudio look for devices again
+MAX_FAILURES = 5
+SORRY = "Sorry, I couldn't get an answer just now. Please try again."
 
 
 def main():
@@ -24,7 +32,7 @@ def main():
         cfg = load_config(args.config)
     except FileNotFoundError:
         sys.exit(f"[✗] {args.config} not found. Create it with: cp config.example.yaml config.yaml")
-    except ConfigError as e:
+    except (ConfigError, OSError) as e:
         sys.exit(f"[✗] {args.config}: {e}")
 
     if args.debug:
@@ -36,30 +44,44 @@ def main():
 
     print("")
     print("==============================================")
-    print("  NUC Offline Voice Assistant")
+    print(f"  NUC Offline Voice Assistant: {cfg['assistant']['name']}")
     print(f"  Model: {cfg['model']['name']}")
     print(f"  Wake word: {'enabled' if cfg['wake_word']['enabled'] else 'disabled'}")
     print("==============================================")
     print("")
 
-    # Initialise all components
-    transcriber = Transcriber(cfg)
-    llm = LLMClient(cfg)
-    speaker = Speaker(cfg)
-    wake_detector = WakeWordDetector(cfg)
-    listener = Listener(cfg)
-    follow_up = cfg["conversation"]["follow_up_seconds"]
+    try:
+        run(cfg, debug)
+    except KeyboardInterrupt:
+        print("\n\n[Shutting down]")
 
-    # Signal ready
-    if cfg["behaviour"]["startup_sound"]:
-        play_beep(800, 0.1)
-        time.sleep(0.05)
-        play_beep(1000, 0.1)
+
+def run(cfg: dict, debug: bool):
+    """Load every component, then hold conversations until stopped."""
+    out = cfg["audio"]["output_device"]
+    try:
+        transcriber = Transcriber(cfg)
+        llm = LLMClient(cfg)
+        speaker = Speaker(cfg)
+        wake_detector = WakeWordDetector(cfg)
+        listener = Listener(cfg)
+
+        # Signal ready
+        if cfg["behaviour"]["startup_sound"]:
+            play_beep(800, 0.1, device=out)
+            time.sleep(0.05)
+            play_beep(1000, 0.1, device=out)
+    except Exception as e:
+        if debug:
+            traceback.print_exc()
+        sys.exit(f"[✗] Couldn't start: {e}")
+    follow_up = cfg["conversation"]["follow_up_seconds"]
 
     print("\n[Ready]\n")
 
     # Main conversation loop
     audio = None  # a turn already heard: a barge-in or a follow-up question
+    failures = 0
     while True:
         try:
             if audio is None:
@@ -67,7 +89,7 @@ def main():
                 wake_detector.wait_for_wake_word()
 
                 # Signal that we're listening
-                play_beep(1200, 0.08)
+                play_beep(1200, 0.08, device=out)
                 if debug:
                     print("[Recording...]")
                 audio = listener.record_turn()
@@ -79,14 +101,19 @@ def main():
             if monitor is not None:
                 monitor.start()
             try:
-                text = transcriber.transcribe(audio, cfg["audio"]["sample_rate"])
+                text = transcriber.transcribe(audio)
+                failures = 0  # the mic and Whisper are working
 
                 if monitor is not None and monitor.heard.is_set():
-                    if debug:
-                        print("[Still talking, listening...]")
                     monitor.stop()
-                    audio = listener.record_turn(initial=[audio, *monitor.frames])
-                    continue
+                    if len(audio) < listener.max_samples:
+                        if debug:
+                            print("[Still talking, listening...]")
+                        audio = listener.record_turn(initial=[audio, *monitor.frames])
+                        continue
+                    # Already at record_seconds (e.g. a TV is on): answer what we have,
+                    # with a fresh monitor for barge-in
+                    monitor = listener.monitor().start()
                 audio = None
 
                 if not text:
@@ -99,19 +126,25 @@ def main():
 
                 # Get the LLM response and speak it sentence by sentence. With
                 # barge-in, talking over it stops the reply and starts a new turn.
-                if not listener.barge_in:
-                    if monitor is not None:
-                        monitor.stop()
-                    speaker.speak_stream(llm.chat_stream(text), debug=debug)
-                else:
-                    speaker.speak_stream(llm.chat_stream(text, stop=monitor.heard),
-                                         debug=debug, stop=monitor.heard)
-                    if monitor.heard.is_set():
-                        if debug:
-                            print("[Interrupted, listening...]")
-                        monitor.stop()
-                        audio = listener.record_turn(initial=monitor.frames)
-                        continue
+                stop = monitor.heard if listener.barge_in else None
+                if stop is None and monitor is not None:
+                    monitor.stop()
+                try:
+                    said = speaker.speak_stream(llm.chat_stream(text, stop=stop),
+                                                debug=debug, stop=stop)
+                    llm.remember(text, " ".join(said))
+                except requests.RequestException as e:
+                    # Ollama stopped, timed out or failed: say so rather than go quiet
+                    print(f"[Error]: no reply from Ollama: {e}")
+                    speaker.speak(SORRY)
+                    continue
+                if stop is not None and stop.is_set():
+                    if debug:
+                        print("[Interrupted, listening...]")
+                    llm.cancel()
+                    monitor.stop()
+                    audio = listener.record_turn(initial=monitor.frames)
+                    continue
             finally:
                 if monitor is not None:
                     monitor.stop()
@@ -124,12 +157,17 @@ def main():
 
         except KeyboardInterrupt:
             print("\n\n[Shutting down]")
-            play_beep(400, 0.2)
+            play_beep(400, 0.2, device=out)
             break
+        except EOFError:
+            # input() with nothing to read: running as a service with the wake word off
+            sys.exit("[✗] No keyboard to press Enter on. Turn wake_word.enabled on to run as a service")
         except Exception as e:
+            failures += 1
             print(f"[Error]: {e}")
-            if debug:
-                import traceback
-                traceback.print_exc()
-            time.sleep(1)
+            traceback.print_exc()
+            if failures >= MAX_FAILURES:
+                sys.exit(f"[✗] {failures} errors in a row, stopping (systemd will restart it)")
+            time.sleep(failures)
+            audio = None
             continue

@@ -1,5 +1,8 @@
 """Wake word detection with openWakeWord."""
 
+import re
+from pathlib import Path
+
 import sounddevice as sd
 
 # openWakeWord import with graceful fallback
@@ -8,13 +11,15 @@ try:
     OWW_AVAILABLE = True
 except ImportError:
     OWW_AVAILABLE = False
-    print("[!] openWakeWord not available — running without wake word detection")
 
 
 class WakeWordDetector:
     def __init__(self, cfg: dict):
         ww = cfg["wake_word"]
-        self.enabled = ww["enabled"] and OWW_AVAILABLE
+        self.enabled = ww["enabled"]
+        if self.enabled and not OWW_AVAILABLE:
+            raise RuntimeError("openWakeWord won't import. Rerun setup.sh, or turn "
+                               "wake_word.enabled off to press Enter instead")
         self.threshold = ww["threshold"]
         self.sample_rate = 16000
         self.chunk_size = 1280  # Required by openWakeWord
@@ -26,7 +31,9 @@ class WakeWordDetector:
                 wakeword_models=[ww["model"]],
                 inference_framework="onnx",
             )
-            print(f"[✓] Wake word ready — say '{ww['model'].replace('_', ' ')}'")
+            # "hey_jarvis" or a path such as models/hey_jarvis_v0.1.onnx -> "hey jarvis"
+            phrase = re.sub(r"_v\d.*$", "", Path(ww["model"]).stem).replace("_", " ")
+            print(f"[✓] Wake word ready — say '{phrase}'")
         else:
             print("[!] Wake word disabled — press Enter to trigger recording")
 
