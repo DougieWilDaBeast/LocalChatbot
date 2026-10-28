@@ -456,18 +456,18 @@ def test_config_reports_invalid_yaml_in_one_line(tmp_path):
         config.load_config(path)
 
 
-def test_config_warns_about_typos(tmp_path, capsys):
+def test_config_warns_about_typos(tmp_path, caplog):
     raw = yaml.safe_load((REPO / "config.example.yaml").read_text())
     raw["wake_word"]["treshold"] = 0.9
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(raw))
     config.load_config(path)
-    assert "wake_word.treshold" in capsys.readouterr().out
+    assert "wake_word.treshold" in caplog.text
 
 
-def test_config_example_has_no_unknown_settings(capsys):
+def test_config_example_has_no_unknown_settings(caplog):
     config.load_config(REPO / "config.example.yaml")
-    assert "unknown setting" not in capsys.readouterr().out
+    assert "unknown setting" not in caplog.text
 
 
 def test_config_finds_models_next_to_config_from_another_folder(tmp_path, monkeypatch):
@@ -955,3 +955,11 @@ def test_speak_skips_a_sentence_piper_cant_say_and_cleans_up(speaker, monkeypatc
     spk.speak("good")
     assert len(played) == 1
     assert list(tmp_path.glob("*.wav")) == []
+
+
+def test_journal_log_lines_carry_their_priority():
+    import logging
+    from nuc_assistant import log
+    record = logging.LogRecord("nuc_assistant.x", logging.WARNING, __file__, 1,
+                               "first\nsecond", None, None)
+    assert log.JournalFormatter().format(record) == "<4>first\n<4>second"

@@ -1,9 +1,12 @@
 """Wake word detection with openWakeWord."""
 
+import logging
 import re
 from pathlib import Path
 
 import sounddevice as sd
+
+log = logging.getLogger(__name__)
 
 # openWakeWord import with graceful fallback
 try:
@@ -26,16 +29,16 @@ class WakeWordDetector:
         self.input_device = cfg["audio"]["input_device"]
 
         if self.enabled:
-            print(f"[→] Loading wake word model ({ww['model']})...")
+            log.info(f"[→] Loading wake word model ({ww['model']})...")
             self.model = WakeWordModel(
                 wakeword_models=[ww["model"]],
                 inference_framework="onnx",
             )
             # "hey_jarvis" or a path such as models/hey_jarvis_v0.1.onnx -> "hey jarvis"
             phrase = re.sub(r"_v\d.*$", "", Path(ww["model"]).stem).replace("_", " ")
-            print(f"[✓] Wake word ready — say '{phrase}'")
+            log.info(f"[✓] Wake word ready — say '{phrase}'")
         else:
-            print("[!] Wake word disabled — press Enter to trigger recording")
+            log.info("[!] Wake word disabled — press Enter to trigger recording")
 
     def wait_for_wake_word(self):
         """Block until wake word is detected."""
@@ -43,7 +46,7 @@ class WakeWordDetector:
             input("[Waiting] Press Enter to speak...")
             return
 
-        print("[Listening for wake word...]")
+        log.info("[Listening for wake word...]")
 
         with sd.InputStream(
             samplerate=self.sample_rate,
@@ -59,7 +62,7 @@ class WakeWordDetector:
 
                 for model_name, score in prediction.items():
                     if score >= self.threshold:
-                        print(f"[Wake word detected: {score:.2f}]")
+                        log.info(f"[Wake word detected: {score:.2f}]")
                         # Clear buffered audio so the same utterance can't re-trigger
                         self.model.reset()
                         return
