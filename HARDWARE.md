@@ -6,32 +6,34 @@
 | --- | ---------------------------------------------------- |
 | CPU | Intel Core i5-1135G7 @ 2.40GHz (4 cores / 8 threads) |
 | RAM | 32GB DDR4                                            |
-| GPU | Intel Iris Xe Graphics (96 Execution Units)          |
+| GPU | Intel Iris Xe Graphics (80 Execution Units)          |
 | TDP | 28W (low idle power — good for always-on use)        |
 
 ---
 
-## Model Performance Estimates
+## Model Performance
 
-| Model          | RAM Used | Tokens/sec (CPU) | Tokens/sec (iGPU) |
-| -------------- | -------- | ---------------- | ----------------- |
-| Gemma 3 1B Q4  | ~1.5GB   | ~15–25           | ~30–45            |
-| Gemma 3 4B Q4  | ~4GB     | ~5–10            | ~12–20            |
-| Gemma 4 E4B Q4 | ~6GB     | ~4–8             | ~10–18            |
+Measured so far in a 4-core cloud VM with no GPU (the NUC's own numbers are still to come):
 
-With 32GB RAM there is no memory pressure at any of these sizes.
-5–10 tokens/sec on the 4B model produces a conversational response in 2–4 seconds — acceptable for voice.
+| Measurement                                          | Result               |
+| ---------------------------------------------------- | -------------------- |
+| Gemma 4 E4B generation speed (CPU)                   | about 3.4 tokens/sec |
+| Gemma 4 E4B memory once loaded (4096 context)        | about 7.5 GB         |
+| End of a short question to the assistant starting to speak | 4.5 to 8 s (shared CPU) |
+| Talking over the reply to playback stopping          | about 0.7 s          |
+| A 500-token reply, start to finish                   | about 150 s          |
+
+Because only the first sentence has to be ready before speaking starts, the wait doesn't grow with the length of the answer. Gemma 3 4B (3.3 GB download) is the lighter option if replies feel slow. Whether the iGPU helps is not measured yet.
 
 ---
 
 ## Intel Iris Xe Notes
 
-- 96 Execution Units on the i5-1135G7
+- 80 Execution Units on the i5-1135G7
 - Shares system RAM (unified memory) — no dedicated VRAM
 - Supported by Intel oneAPI, OpenCL, Vulkan, and OpenVINO
 - faster-whisper (CTranslate2) has no Intel GPU backend; Whisper on the iGPU needs OpenVINO GenAI's Whisper pipeline instead
 - Ollama has an experimental Vulkan backend that can offload the LLM to the iGPU without building llama.cpp yourself
-- The iGPU figures in the table above are estimates, not measurements
 
 ---
 
@@ -40,8 +42,9 @@ With 32GB RAM there is no memory pressure at any of these sizes.
 If audio is not working out of the box:
 
 ```bash
-# Check PulseAudio is running (installed by setup.sh)
-systemctl --user status pulseaudio
+# Check PipeWire is running (Ubuntu 24.04's sound server; setup.sh installs it on Server)
+systemctl --user status pipewire pipewire-pulse wireplumber
+wpctl status
 
 # List ALSA devices
 aplay -l
