@@ -5,7 +5,10 @@
 # OS: Ubuntu 24.04 LTS
 # =============================================================================
 
-set -e
+set -eo pipefail
+
+# Work from the repo folder, wherever the script is run from
+cd "$(dirname "$0")"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,14 +31,13 @@ echo ""
 # -----------------------------------------------------------------------------
 # 1. System Update
 # -----------------------------------------------------------------------------
-info "Updating system packages..."
-sudo apt-get update -qq && sudo apt-get upgrade -y -qq
+info "Installing system packages..."
+sudo apt-get update -qq
+# pipewire-audio is Ubuntu 24.04's sound server (already there on Desktop,
+# added on Server). Everything else comes as Python wheels, so no compilers.
 sudo apt-get install -y \
-    curl wget git python3 python3-pip python3-venv \
-    libportaudio2 \
-    ffmpeg alsa-utils pulseaudio zstd \
-    build-essential cmake pkg-config \
-    libasound2-dev libsndfile1-dev
+    curl git python3 python3-pip python3-venv \
+    libportaudio2 alsa-utils pipewire-audio zstd
 log "System packages installed"
 
 # -----------------------------------------------------------------------------
@@ -63,8 +65,11 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
-# Default model, matching config.example.yaml
-MODEL="gemma4:e4b"
+# Use config.yaml if it exists yet, otherwise the example
+CONFIG="config.yaml"
+[ -f "$CONFIG" ] || CONFIG="config.example.yaml"
+MODEL=$(python3 -c "import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))['model']['name'])" "$CONFIG" 2>/dev/null \
+    || echo "gemma4:e4b")
 
 info "Pulling $MODEL model (this will take a few minutes)..."
 ollama pull "$MODEL"
@@ -84,7 +89,7 @@ log "Virtual environment created"
 
 info "Installing Python dependencies..."
 # Install all deps except openwakeword (tflite-runtime fails on Python 3.12)
-grep -v '^openwakeword==' requirements.txt | pip install -r /dev/stdin -q
+pip install -q -r <(grep -v '^openwakeword==' requirements.txt)
 # Install openwakeword without pulling tflite-runtime (uses onnxruntime instead)
 pip install openwakeword==0.6.0 --no-deps -q
 log "Python dependencies installed"
@@ -113,10 +118,33 @@ print('openWakeWord models downloaded')
 # -----------------------------------------------------------------------------
 info "Downloading Smart Turn model..."
 mkdir -p models/smart-turn
-curl -fsSL -o models/smart-turn/smart-turn-v3.2-cpu.onnx \
-    "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx" \
-    && log "Smart Turn model ready" \
-    || warn "Smart Turn download failed — the assistant will fall back to the silence timer"
+SMART_TURN=models/smart-turn/smart-turn-v3.2-cpu.onnx
+SMART_TURN_SHA256=2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f
+if [ -f "$SMART_TURN" ]; then
+    warn "Smart Turn model already downloaded, skipping"
+# Download to a .part file and check it, so a broken download is never used
+elif curl -fsSL -o "$SMART_TURN.part" \
+        "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx" \
+    && echo "$SMART_TURN_SHA256  $SMART_TURN.part" | sha256sum -c --quiet; then
+    mv "$SMART_TURN.part" "$SMART_TURN"
+    log "Smart Turn model ready"
+else
+    rm -f "$SMART_TURN.part"
+    warn "Smart Turn download failed — the assistant will fall back to the silence timer"
+fi
+
+# -----------------------------------------------------------------------------
+# 5c. Whisper speech-to-text model (so the assistant never needs the internet)
+# -----------------------------------------------------------------------------
+STT_MODEL=$(python3 -c "from nuc_assistant.config import load_config; print(load_config('$CONFIG')['stt']['model'])" \
+    2>/dev/null || echo "small")
+info "Downloading Whisper $STT_MODEL model..."
+python3 -c "
+import sys
+from faster_whisper import WhisperModel
+WhisperModel(sys.argv[1], device='cpu', compute_type='int8')
+" "$STT_MODEL" && log "Whisper model ready" \
+    || warn "Whisper download failed — run setup.sh again with internet before going offline"
 
 # -----------------------------------------------------------------------------
 # 6. Audio device check
@@ -141,14 +169,18 @@ for i, d in enumerate(devices):
         print(f'  [{i}] {d[\"name\"]}')
 "
 echo ""
-warn "Check the device indices above and update config.yaml accordingly"
+if [ ! -f config.yaml ]; then
+    cp config.example.yaml config.yaml
+    log "Created config.yaml from config.example.yaml"
+fi
+warn "If the default devices are wrong, set audio.input_device / output_device in config.yaml"
 
 # -----------------------------------------------------------------------------
 # 7. Test Ollama is responding
 # -----------------------------------------------------------------------------
 info "Testing Ollama API..."
 RESPONSE=$(curl -s http://localhost:11434/api/generate \
-    -d "{\"model\":\"$MODEL\",\"prompt\":\"Reply with just the word ready.\",\"stream\":false}" \
+    -d "{\"model\":\"$MODEL\",\"prompt\":\"Reply with just the word ready.\",\"stream\":false,\"think\":false,\"options\":{\"num_predict\":20}}" \
     | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])" 2>/dev/null || echo "FAIL")
 
 if [[ "$RESPONSE" == *"FAIL"* ]]; then
@@ -166,9 +198,8 @@ echo "  Setup Complete"
 echo "============================================="
 echo ""
 echo "Next steps:"
-echo "  1. Create config:      cp config.example.yaml config.yaml"
-echo "  2. Edit config:        nano config.yaml"
-echo "  3. Test the pipeline:  ./test_pipeline.sh"
-echo "  4. Run the assistant:  source venv/bin/activate && python3 assistant.py"
-echo "  5. Install as service: sudo ./install_service.sh"
+echo "  1. Edit config:        nano config.yaml"
+echo "  2. Test the pipeline:  ./test_pipeline.sh"
+echo "  3. Try it out:         source venv/bin/activate && python3 assistant.py --debug"
+echo "  4. Install as service: sudo ./install_service.sh"
 echo ""
