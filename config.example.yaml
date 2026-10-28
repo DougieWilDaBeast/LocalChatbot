@@ -78,8 +78,9 @@ audio:
   input_device: null                    # null = system default. Set to device index from setup.sh
   output_device: null                   # null = system default
   record_seconds: 8                     # Max recording length after wake word
-  silence_threshold: 500                # Stop recording after this many ms of silence (used when Smart Turn is off)
-  speech_threshold: 500                 # Mic RMS level counted as speech (raise in noisy rooms)
+  silence_threshold: 500                # Milliseconds of silence that end a turn (used when Smart Turn is off)
+  speech_threshold: 500                 # Mic level counted as speech, only used if Silero VAD is missing
+                                        # (normally conversation.vad_threshold decides what is speech)
 
 # -----------------------------------------------------------------------------
 # Conversation (barge-in, end-of-turn detection, follow-ups)
