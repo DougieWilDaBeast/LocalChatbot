@@ -1,12 +1,15 @@
 """Chat with the local LLM through Ollama's REST API."""
 
 import json
+import logging
 import re
 import sys
 import unicodedata
 from collections import deque
 
 import requests
+
+log = logging.getLogger(__name__)
 
 # A sentence ends at . ! or ? (plus any closing quote or bracket) followed by
 # whitespace, or at a line break. Not after a list number ("2.") or a common
@@ -80,10 +83,10 @@ class LLMClient:
         self.base_url = cfg["model"]["host"].rstrip("/")
         self._response = None
 
-        print(f"[→] Connecting to Ollama ({self.model})...")
+        log.info(f"[→] Connecting to Ollama ({self.model})...")
         self._check_connection()
         self._warm_up()
-        print("[✓] Ollama ready")
+        log.info("[✓] Ollama ready")
 
     def _check_connection(self):
         try:
@@ -110,7 +113,7 @@ class LLMClient:
                 timeout=self.timeout,
             ).raise_for_status()
         except requests.RequestException as e:
-            print(f"[!] Could not preload {self.model}: {e}")
+            log.warning(f"[!] Could not preload {self.model}: {e}")
 
     def _options(self) -> dict:
         return {

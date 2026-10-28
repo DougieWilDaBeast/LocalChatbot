@@ -2,6 +2,7 @@
 openWakeWord), end-of-turn detection (Smart Turn), and listening on while the
 assistant transcribes and talks, for barge-in."""
 
+import logging
 import threading
 from collections import deque
 from pathlib import Path
@@ -24,6 +25,8 @@ try:
 except ImportError:
     FEATURES_AVAILABLE = False
 
+log = logging.getLogger(__name__)
+
 SAMPLE_RATE = 16000
 FRAME = 480          # 30 ms, Silero's recommended frame size
 FRAME_MS = 30
@@ -37,7 +40,7 @@ def load_vad():
     try:
         return VAD()
     except Exception as e:  # model file missing: run openwakeword.utils.download_models()
-        print(f"[!] Silero VAD unavailable ({e})")
+        log.warning(f"[!] Silero VAD unavailable ({e})")
         return None
 
 
@@ -81,7 +84,7 @@ class Listener:
         self.monitor_vad = load_vad() if self.vad is not None else None
         self.barge_in = conv["barge_in"] and self.vad is not None
         if self.vad is None:
-            print("[!] No voice activity detection: falling back to the silence timer, "
+            log.warning("[!] No voice activity detection: falling back to the silence timer, "
                   "with no barge-in or follow-up listening")
             self.barge_in = False
 
@@ -89,13 +92,13 @@ class Listener:
         model = conv["smart_turn_model"]
         if conv["smart_turn"] and self.vad is not None:
             if not FEATURES_AVAILABLE:
-                print("[!] faster-whisper missing, Smart Turn disabled")
+                log.warning("[!] faster-whisper missing, Smart Turn disabled")
             elif not Path(model).exists():
-                print(f"[!] Smart Turn model not found at {model}, using the silence timer. "
+                log.warning(f"[!] Smart Turn model not found at {model}, using the silence timer. "
                       "Run setup.sh to download it")
             else:
                 self.smart_turn = SmartTurn(model)
-                print("[✓] Smart Turn end-of-turn detection ready")
+                log.info("[✓] Smart Turn end-of-turn detection ready")
 
     def is_speech(self, vad, frame: np.ndarray) -> bool:
         return vad.predict(frame, frame_size=FRAME) >= self.vad_threshold
@@ -203,7 +206,7 @@ class SpeechMonitor:
         try:
             self._listen()
         except Exception as e:  # e.g. the mic can't be opened twice: carry on without barge-in
-            print(f"[!] Stopped listening for barge-in: {e}")
+            log.warning(f"[!] Stopped listening for barge-in: {e}")
 
     def _listen(self):
         listener = self.listener

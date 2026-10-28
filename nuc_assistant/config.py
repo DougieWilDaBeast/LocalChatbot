@@ -1,10 +1,13 @@
 """Load config.yaml, fill in defaults and catch mistakes before anything starts."""
 
 import copy
+import logging
 from numbers import Real
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 # Used for any setting config.yaml leaves out. Matches config.example.yaml.
 DEFAULTS = {
@@ -213,5 +216,5 @@ def load_config(path: str = "config.yaml") -> dict:
     validate(cfg)
     resolve_model_paths(cfg, Path(path).resolve().parent)
     for name in unknown_settings(cfg):
-        print(f"[!] {path}: unknown setting '{name}' ignored (a typo?)")
+        log.warning(f"[!] {path}: unknown setting '{name}' ignored (a typo?)")
     return cfg

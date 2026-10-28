@@ -1,5 +1,6 @@
 """Text-to-speech with Piper."""
 
+import logging
 import queue
 import tempfile
 import threading
@@ -7,6 +8,8 @@ import wave
 from pathlib import Path
 
 from .audio import play_audio_file
+
+log = logging.getLogger(__name__)
 
 try:
     from piper import PiperVoice
@@ -30,7 +33,7 @@ class Speaker:
                 raise RuntimeError(f"Piper voice file not found at {path}. Run setup.sh to download it")
 
         self.voice = PiperVoice.load(self.model_path, config_path=self.config_path)
-        print("[✓] Piper TTS ready")
+        log.info("[✓] Piper TTS ready")
 
     def speak(self, text: str, stop=None):
         """Convert text to speech and play through speaker. Playback is cut
@@ -46,7 +49,7 @@ class Speaker:
                 with wave.open(tmp_path, "wb") as wav_file:
                     self.voice.synthesize_wav(text, wav_file)
             except Exception as e:  # skip a sentence Piper can't say, carry on with the rest
-                print(f"[!] Piper couldn't say {text!r}: {e}")
+                log.warning(f"[!] Piper couldn't say {text!r}: {e}")
                 return
             if stop is None or not stop.is_set():
                 # A speaker error propagates, so the main loop can see the device is gone
@@ -54,7 +57,7 @@ class Speaker:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def speak_stream(self, sentences, debug: bool = False, stop=None) -> list[str]:
+    def speak_stream(self, sentences, stop=None) -> list[str]:
         """Speak sentences as they arrive. The LLM keeps generating in a
         background thread while the current sentence plays. Setting `stop`
         (a threading.Event) ends playback straight away. Returns the sentences
@@ -81,8 +84,7 @@ class Speaker:
                 break
             if isinstance(item, Exception):
                 raise item
-            if debug:
-                print(f"[Assistant]: {item}")
+            log.debug(f"[Assistant]: {item}")
             said.append(item)
             self.speak(item, stop=stop)
         return said
