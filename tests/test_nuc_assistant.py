@@ -870,3 +870,88 @@ def test_wake_word_required_when_enabled(cfg, monkeypatch):
     monkeypatch.setattr(wakeword, "OWW_AVAILABLE", False)
     with pytest.raises(RuntimeError, match="openWakeWord"):
         wakeword.WakeWordDetector(cfg)
+
+
+def test_main_never_sends_an_empty_transcript_to_the_llm(app, monkeypatch):
+    monkeypatch.setattr(app.Transcriber, "transcribe", lambda self, audio: "")
+    app.main()
+    assert app.speaker.said == []
+
+
+def test_main_barge_in_restarts_the_turn_with_what_was_heard(app, monkeypatch):
+    barge = np.full(5, 7, np.int16)
+    stops, initials = [], []
+
+    class FakeMonitor:
+        def __init__(self):
+            self.heard = threading.Event()
+            self.frames = [barge]
+
+        def start(self):
+            return self
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(app.Listener, "barge_in", True)
+    monkeypatch.setattr(app.Listener, "monitor", lambda self: FakeMonitor())
+    real_record = app.Listener.record_turn
+
+    def record_turn(self, wait_seconds=None, initial=None):
+        initials.append(initial)
+        return real_record(self, wait_seconds, initial)
+    monkeypatch.setattr(app.Listener, "record_turn", record_turn)
+
+    def speak_stream(self, sentences, debug=False, stop=None):
+        stops.append(stop)
+        if len(stops) == 1:
+            stop.set()  # the user talks over the first reply
+            return ["It is"]
+        return list(sentences)
+    monkeypatch.setattr(app.Speaker, "speak_stream", speak_stream)
+    app.LLMClient.cancel = lambda self: self.remembered.append("cancelled")
+    app.turns.append(np.ones(3, np.int16))  # the rest of the barged-in turn
+    app.main()
+
+    assert stops[0] is not None  # the reply could be interrupted
+    assert initials[1] == [barge]  # the next turn starts with the barge-in audio
+    assert app.llm.remembered[:2] == [("What time is it?", "It is"), "cancelled"]
+
+
+def test_play_audio_file_cuts_off_part_way(tmp_path, monkeypatch):
+    import soundfile as sf
+    path = tmp_path / "long.wav"
+    sf.write(path, np.zeros(48000 * 10, np.float32), 48000)  # 10s
+    calls = []
+    monkeypatch.setattr(audio.sd, "play", lambda *a, **kw: calls.append("play"))
+    monkeypatch.setattr(audio.sd, "stop", lambda: calls.append("stop"))
+    monkeypatch.setattr(audio.sd, "wait", lambda: None)
+    stop = threading.Event()
+    threading.Timer(0.05, stop.set).start()
+    started = time.monotonic()
+    audio.play_audio_file(str(path), stop=stop)
+    assert time.monotonic() - started < 1
+    assert calls == ["play", "stop"]
+
+
+def test_speak_skips_a_sentence_piper_cant_say_and_cleans_up(speaker, monkeypatch, tmp_path):
+    spk, _ = speaker
+    monkeypatch.setattr(tts.tempfile, "tempdir", str(tmp_path))
+    played = []
+    monkeypatch.setattr(tts, "play_audio_file", lambda *a, **kw: played.append(a))
+
+    class Voice:
+        def synthesize_wav(self, text, wav):
+            if text == "bad":
+                raise ValueError("can't say that")
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(22050)
+            wav.writeframes(b"\0\0" * 100)
+
+    spk.voice = Voice()
+    del spk.speak  # the fixture's stand-in: use the real one
+    spk.speak("bad")
+    spk.speak("good")
+    assert len(played) == 1
+    assert list(tmp_path.glob("*.wav")) == []
