@@ -1,27 +1,42 @@
 [Unit]
 Description=NUC Offline Voice Assistant
-After=network.target ollama.service sound.target
-Wants=ollama.service
-Documentation=https://github.com/<your-username>/<your-repo>
+Documentation=https://github.com/DougieWilDaBeast/LocalChatbot
+# The user's own sound server (PipeWire) lives in their user manager, which
+# runs from boot because install_service.sh turns on lingering
+After=ollama.service user@__SERVICE_UID__.service
+Wants=ollama.service user@__SERVICE_UID__.service
 
 [Service]
 Type=simple
 User=__SERVICE_USER__
 WorkingDirectory=__REPO_PATH__
-ExecStartPre=/bin/sleep 5
-ExecStart=__PYTHON_BIN__ __REPO_PATH__/assistant.py
+# Wait (up to a minute) for Ollama to answer rather than a fixed sleep
+ExecStartPre=/bin/sh -c 'for i in $$(seq 60); do curl -sf http://127.0.0.1:11434/api/tags >/dev/null && exit 0; sleep 1; done; exit 1'
+ExecStart="__PYTHON_BIN__" "__REPO_PATH__/assistant.py"
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=nuc-assistant
 
-# Audio access
+# Audio: reach the user's PipeWire (or PulseAudio) through their runtime directory
 SupplementaryGroups=audio
+Environment=XDG_RUNTIME_DIR=/run/user/__SERVICE_UID__
+Environment=PULSE_RUNTIME_PATH=/run/user/__SERVICE_UID__/pulse
 
-# Environment
 Environment=PYTHONUNBUFFERED=1
-Environment=PULSE_RUNTIME_PATH=__PULSE_RUNTIME_PATH__
+# setup.sh downloads every model, so never reach out to Hugging Face
+Environment=HF_HUB_OFFLINE=1
+
+# Hardening that leaves /dev/snd and the home folder alone
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
 
 [Install]
 WantedBy=multi-user.target

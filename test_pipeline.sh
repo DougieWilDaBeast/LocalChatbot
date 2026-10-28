@@ -1,16 +1,17 @@
 #!/bin/bash
-# Test each layer of the pipeline individually
+# Test each layer of the pipeline individually, with the settings in config.yaml
 # Run: ./test_pipeline.sh
 
-set -e
+cd "$(dirname "$0")"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+FAILURES=0
 pass() { echo -e "${GREEN}[✓] $1${NC}"; }
-fail() { echo -e "${RED}[✗] $1${NC}"; }
+fail() { echo -e "${RED}[✗] $1${NC}"; FAILURES=$((FAILURES + 1)); }
 info() { echo -e "${YELLOW}[→] $1${NC}"; }
 
 echo ""
@@ -19,23 +20,27 @@ echo ""
 
 source venv/bin/activate 2>/dev/null || { fail "Virtual environment not found. Run setup.sh first."; exit 1; }
 
-# Read settings from config.yaml (falls back to config.example.yaml)
+# Read settings the way the assistant does: config.yaml (or the example) plus defaults
 CONFIG="config.yaml"
 [ -f "$CONFIG" ] || { info "config.yaml not found, using config.example.yaml"; CONFIG="config.example.yaml"; }
+export CONFIG
+python3 -c "from nuc_assistant.config import load_config; import os; load_config(os.environ['CONFIG'])" \
+    || { fail "$CONFIG has a problem (see above)"; exit 1; }
 cfg() {
-    python3 -c "import sys, yaml; c = yaml.safe_load(open('$CONFIG')); print(eval('c' + sys.argv[1]))" "$1"
+    python3 -c "
+import os, sys
+from nuc_assistant.config import load_config
+section, key = sys.argv[1].split('.')
+print(load_config(os.environ['CONFIG'])[section][key])" "$1" 2>/dev/null
 }
-MODEL=$(cfg "['model']['name']")
-OLLAMA_HOST=$(cfg "['model'].get('host', 'http://localhost:11434')")
-STT_MODEL=$(cfg "['stt']['model']")
-VOICE_MODEL=$(cfg "['tts']['model']")
-VOICE_CONFIG=$(cfg "['tts']['config']")
+MODEL=$(cfg model.name)
+OLLAMA_HOST=$(cfg model.host)
 
 # --- 1. Ollama ---
 info "Testing Ollama ($MODEL)..."
 if curl -s "$OLLAMA_HOST/api/tags" > /dev/null 2>&1; then
     RESPONSE=$(curl -s "$OLLAMA_HOST/api/generate" \
-        -d "{\"model\":\"$MODEL\",\"prompt\":\"Say the single word: working\",\"stream\":false}" \
+        -d "{\"model\":\"$MODEL\",\"prompt\":\"Say the single word: working\",\"stream\":false,\"think\":false,\"options\":{\"num_predict\":20}}" \
         | python3 -c "import sys,json; print(json.load(sys.stdin).get('response','').strip())" || true)
     if [ -n "$RESPONSE" ]; then
         pass "Ollama: '$RESPONSE'"
@@ -47,41 +52,22 @@ else
 fi
 
 # --- 2. faster-whisper ---
-info "Testing faster-whisper ($STT_MODEL)..."
+info "Testing faster-whisper ($(cfg stt.model))..."
 python3 -c "
-from faster_whisper import WhisperModel
-model = WhisperModel('$STT_MODEL', device='cpu', compute_type='int8')
-print('faster-whisper loaded successfully')
+import os
+from nuc_assistant.config import load_config
+from nuc_assistant.stt import Transcriber
+Transcriber(load_config(os.environ['CONFIG']))
 " && pass "faster-whisper: model loads" || fail "faster-whisper: model failed to load"
 
-# --- 3. Piper TTS ---
+# --- 3. Piper TTS, played on audio.output_device ---
 info "Testing Piper TTS..."
-if [ -f "$VOICE_MODEL" ]; then
-    rm -f /tmp/test_tts.wav
-    python3 -c "
-import wave
-from piper import PiperVoice
-voice = PiperVoice.load('$VOICE_MODEL', config_path='$VOICE_CONFIG')
-with wave.open('/tmp/test_tts.wav', 'wb') as f:
-    voice.synthesize_wav('Assistant is ready.', f)
-" || true
-    if [ -s "/tmp/test_tts.wav" ]; then
-        pass "Piper TTS: wav file generated"
-        info "Playing test audio..."
-        python3 -c "
-import soundfile as sf
-import sounddevice as sd
-data, sr = sf.read('/tmp/test_tts.wav')
-sd.play(data, sr)
-sd.wait()
-print('Audio played')
-" && pass "Piper TTS: audio played" || fail "Piper TTS: audio playback failed"
-    else
-        fail "Piper TTS: no output file generated"
-    fi
-else
-    fail "Piper voice model not found at $VOICE_MODEL — run setup.sh"
-fi
+python3 -c "
+import os
+from nuc_assistant.config import load_config
+from nuc_assistant.tts import Speaker
+Speaker(load_config(os.environ['CONFIG'])).speak('Assistant is ready.')
+" && pass "Piper TTS: spoke 'Assistant is ready.' (did you hear it?)" || fail "Piper TTS failed"
 
 # --- 4. Audio devices ---
 info "Listing audio devices..."
@@ -96,21 +82,29 @@ for i, d in enumerate(sd.query_devices()):
     if d['max_output_channels'] > 0:
         print(f'  [{i}] {d[\"name\"]}')
 "
-pass "Audio devices listed above — check config.yaml if wrong device is used"
+info "Check config.yaml if the wrong device is used"
 
-# --- 5. openWakeWord ---
-info "Testing openWakeWord..."
+# --- 5. Wake word, voice activity and Smart Turn models ---
+info "Testing openWakeWord, Silero VAD and Smart Turn..."
 python3 -c "
-try:
-    from openwakeword.model import Model
-    print('openWakeWord import OK')
-except ImportError as e:
-    print(f'openWakeWord not available: {e}')
-" && pass "openWakeWord available" || fail "openWakeWord not available"
+import os
+from nuc_assistant.config import load_config
+from nuc_assistant.listen import Listener
+from nuc_assistant.wakeword import WakeWordDetector
+cfg = load_config(os.environ['CONFIG'])
+WakeWordDetector(cfg)
+listener = Listener(cfg)
+assert listener.vad is not None, 'Silero VAD missing'
+" && pass "Listening models load" || fail "Listening models failed to load"
 
 echo ""
-echo "=== Test Complete ==="
-echo ""
-echo "If all tests pass, run the assistant:"
-echo "  source venv/bin/activate && python3 assistant.py --debug --no-wake-word"
+if [ "$FAILURES" -eq 0 ]; then
+    echo "=== All tests passed ==="
+    echo ""
+    echo "Run the assistant:"
+    echo "  source venv/bin/activate && python3 assistant.py --debug"
+else
+    echo "=== $FAILURES test(s) failed ==="
+    exit 1
+fi
 echo ""
